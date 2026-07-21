@@ -78,11 +78,28 @@ const CATEGORY_DEFS: CategoryDef[] = [
   { key: 'Banque',      emoji: '💳', color: '#0075eb', bgGradient: 'linear-gradient(135deg, rgba(0,117,235,0.18) 0%, rgba(0,117,235,0.04) 100%)' },
 ];
 
-// ─── Partner Logo — Clearbit + Fallback ──────────────────────────────────────
+// ─── Partner Logo — Logo.dev + fallback favicon + lettre ────────────────────
+
+const LOGO_DEV_KEY = import.meta.env.VITE_LOGO_DEV_PUBLISHABLE_KEY;
+
+const buildPartnerLogoUrl = (domain: string): string => {
+  if (LOGO_DEV_KEY) {
+    const params = new URLSearchParams({
+      token: LOGO_DEV_KEY,
+      format: 'webp',
+      retina: 'true',
+      size: '256',
+    });
+    return `https://img.logo.dev/${domain}?${params.toString()}`;
+  }
+
+  // Fallback si la variable Vercel/local n’est pas encore présente.
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`;
+};
 
 const PartnerLogo = ({ partner, size = 40 }: { partner: Partner; size?: number }) => {
   const [logoFailed, setLogoFailed] = useState(false);
-  const logoUrl = `https://logo.clearbit.com/${partner.domain}`;
+  const logoUrl = buildPartnerLogoUrl(partner.domain);
   const s = `${size}px`;
 
   if (logoFailed) {
@@ -99,14 +116,15 @@ const PartnerLogo = ({ partner, size = 40 }: { partner: Partner; size?: number }
   return (
     <div
       className="rounded-xl flex items-center justify-center flex-shrink-0"
-      style={{ width: s, height: s, background: 'rgba(255,255,255,0.90)', padding: size > 40 ? 8 : 6 }}
+      style={{ width: s, height: s, background: 'rgba(255,255,255,0.92)', padding: size > 40 ? 2 : 1 }}
     >
       <img
         src={logoUrl}
         alt={partner.name}
-        className="w-full h-full object-contain"
+        className="w-full h-full object-contain scale-[1.16]"
         onError={() => setLogoFailed(true)}
         loading="lazy"
+        referrerPolicy="no-referrer"
       />
     </div>
   );
