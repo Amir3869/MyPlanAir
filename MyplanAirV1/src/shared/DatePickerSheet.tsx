@@ -214,6 +214,9 @@ export const DatePickerSheet = ({
     });
   };
 
+  const prevYear = () => setViewYear((y) => y - 1);
+  const nextYearFast = () => setViewYear((y) => y + 1);
+
   const selectDay = (day: number) => {
     const iso = toISO(viewYear, viewMonth, day);
     if (min && isoCompare(iso, min) < 0) return;
@@ -237,6 +240,11 @@ export const DatePickerSheet = ({
   const nextMonthValue = viewMonth === 12 ? 1 : viewMonth + 1;
   const nextMonthFirstISO = toISO(nextYear, nextMonthValue, 1);
   const canNext = !max || isoCompare(nextMonthFirstISO, max) <= 0;
+
+  const previousYearSameMonthLastISO = toISO(viewYear - 1, viewMonth, daysInMonth(viewYear - 1, viewMonth));
+  const nextYearSameMonthFirstISO = toISO(viewYear + 1, viewMonth, 1);
+  const canPrevYear = !min || isoCompare(previousYearSameMonthLastISO, min) >= 0;
+  const canNextYear = !max || isoCompare(nextYearSameMonthFirstISO, max) <= 0;
 
   const cells: (number | null)[] = [
     ...Array(startOffset).fill(null),
@@ -315,12 +323,40 @@ export const DatePickerSheet = ({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 8 }}
                   transition={{ duration: 0.18 }}
-                  className="text-center"
+                  className="text-center min-w-[128px]"
                 >
-                  <div className="text-lg font-bold tracking-tight capitalize">
+                  <div className="text-lg font-bold tracking-tight capitalize leading-tight">
                     {MONTHS_FR[viewMonth - 1]}
                   </div>
-                  <div className="text-xs text-white/40">{viewYear}</div>
+                  <div className="mt-1 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={canPrevYear ? prevYear : undefined}
+                      disabled={!canPrevYear}
+                      className="w-6 h-6 rounded-full flex items-center justify-center tap"
+                      style={{
+                        background: canPrevYear ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)',
+                        color:      canPrevYear ? 'rgba(255,255,255,0.50)' : 'rgba(255,255,255,0.16)',
+                      }}
+                      aria-label="Année précédente"
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <div className="text-xs font-semibold text-white/42 min-w-[42px]">{viewYear}</div>
+                    <button
+                      type="button"
+                      onClick={canNextYear ? nextYearFast : undefined}
+                      disabled={!canNextYear}
+                      className="w-6 h-6 rounded-full flex items-center justify-center tap"
+                      style={{
+                        background: canNextYear ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)',
+                        color:      canNextYear ? 'rgba(255,255,255,0.50)' : 'rgba(255,255,255,0.16)',
+                      }}
+                      aria-label="Année suivante"
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
                 </motion.div>
               </AnimatePresence>
 
