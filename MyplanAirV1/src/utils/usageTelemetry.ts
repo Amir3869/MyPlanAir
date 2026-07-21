@@ -79,7 +79,9 @@ export const USAGE_TEST_LIMITS: Partial<Record<UsageService | 'aiTokens', UsageL
   weather:   { daily: 300, weekly: 1500 },
   geocode:   { daily: 300, weekly: 1500 },
   worldmap:  { daily: 50,  weekly: 200 },
-  aiTokens:  { dailyTokens: 100_000, weeklyTokens: 500_000 },
+  // Limite totale IA suivie en local : Groq GPT OSS 120B + Groq GPT OSS 20B + Mistral Small.
+  // Groq : 200K tokens/jour par modèle. Mistral : 25K tokens/min convertis en jour/semaine.
+  aiTokens:  { dailyTokens: 36_400_000, weeklyTokens: 254_800_000 },
 };
 
 const STORAGE_KEY = 'mytrip-usage-events-v1';
