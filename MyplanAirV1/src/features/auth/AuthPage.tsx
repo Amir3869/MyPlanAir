@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSignIn, useSignUp } from '@clerk/clerk-react';
 import { useTripStore } from '../../store/tripStore';
 import { Mail, ArrowRight, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { OnboardingFlow } from './OnboardingFlow';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ICÔNES SVG
@@ -32,13 +31,11 @@ export const AuthPage = () => {
   const { signIn, isLoaded: signInLoaded } = useSignIn();
   const { signUp, isLoaded: signUpLoaded } = useSignUp();
 
-  // ✅ Store local — onboarding + userName
-  const onboardingDone = useTripStore((s) => s.onboardingDone);
+  // ✅ Store local — userName
   const userName       = useTripStore((s) => s.userName);
   const setAuthed      = useTripStore((s) => s.setAuthed);
 
   // ── États locaux ──────────────────────────────────────────────────────────
-  const [showOnboarding, setShowOnboarding] = useState(!onboardingDone);
   const [showEmailForm,  setShowEmailForm]  = useState(false);
   const [email,          setEmail]          = useState('');
   const [password,       setPassword]       = useState('');
@@ -46,11 +43,6 @@ export const AuthPage = () => {
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState<string | null>(null);
   const [isSignUp,       setIsSignUp]       = useState(false);
-
-  // ── Onboarding terminé ────────────────────────────────────────────────────
-  const handleOnboardingComplete = () => {
-    setShowOnboarding(false);
-  };
 
   // ── Google OAuth ──────────────────────────────────────────────────────────
   const continueWithGoogle = async () => {
@@ -143,11 +135,6 @@ export const AuthPage = () => {
       setLoading(false);
     }
   };
-
-  // ── Onboarding en cours ───────────────────────────────────────────────────
-  if (showOnboarding) {
-    return <OnboardingFlow onComplete={handleOnboardingComplete} />;
-  }
 
   // ── Page Auth ─────────────────────────────────────────────────────────────
   return (
