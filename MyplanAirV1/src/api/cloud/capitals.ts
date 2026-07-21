@@ -313,6 +313,7 @@ export const CITY_COORDS: Record<string, { lat: number; lon: number; name: strin
 
   // ── Maroc ───────────────────────────────────────────────────────────────
   'ma-marrakech':   { lat: 31.6295, lon: -7.9811,  name: 'Marrakech' },
+  'ma-casablanca':  { lat: 33.5731, lon: -7.5898,  name: 'Casablanca' },
   'ma-rabat':       { lat: 33.9716, lon: -6.8498,  name: 'Rabat' },
   'ma-fes':         { lat: 34.0181, lon: -5.0078,  name: 'Fès' },
   'ma-tangier':     { lat: 35.7595, lon: -5.8340,  name: 'Tanger' },
@@ -662,11 +663,16 @@ export const CITY_COORDS: Record<string, { lat: number; lon: number; name: strin
 
 // ─── Helper : rechercher les coords d'une ville ────────────────────────────
 // 1. Cherche dans CITY_COORDS par "code pays + nom ville" (insensible cas)
-// 2. Fallback : capitale du pays via CAPITAL_COORDS
+// 2. Optionnel seulement : fallback capitale du pays via CAPITAL_COORDS
+//
+// Important météo roadtrip : par défaut, on NE fallback PAS sur la capitale ici.
+// Sinon une ville absente de la base locale, ex. Casablanca avant ajout,
+// récupère Rabat et toutes les étapes semblent avoir la même météo.
 
 export const findCityCoords = (
   cityName: string,
   countryCode: string,
+  fallbackToCapital = false,
 ): { lat: number; lon: number; name: string } | null => {
   const cc = countryCode.toUpperCase();
   const city = cityName.toLowerCase().trim();
@@ -687,6 +693,6 @@ export const findCityCoords = (
     }
   }
 
-  // 3. Fallback : capitale du pays
-  return CAPITAL_COORDS[cc] ?? null;
+  // 3. Fallback capitale uniquement si explicitement demandé
+  return fallbackToCapital ? (CAPITAL_COORDS[cc] ?? null) : null;
 };
