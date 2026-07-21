@@ -10,6 +10,7 @@ import {
 import { searchAll, CURRENCIES, type CityEntry } from '../../api/countries';
 import { fetchTripPhoto, fetchAssistant, CAPITAL_COORDS } from '../../api/cloud';
 import { fetchRate } from '../../api/currency';
+import { geocodeCity } from '../../api/weather';
 import { fetchItinerary, type ItineraryPayload } from '../decouvrir/itineraryApi';
 import { useTripStore, type Trip, type TripDestination } from '../../store/tripStore';
 import { Flag } from '../../shared/Flag';
@@ -453,10 +454,12 @@ export const TripCreator = ({
 
   const [creationProgress, setCreationProgress] = useState<CreationProgress | null>(null);
 
-  const abortRef     = useRef<AbortController | null>(null);
-  const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stopAbortRef = useRef<AbortController | null>(null);
-  const stopDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef        = useRef<AbortController | null>(null);
+  const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopAbortRef    = useRef<AbortController | null>(null);
+  const stopDebounce    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addStopPanelRef = useRef<HTMLDivElement | null>(null);
+  const stopInputRef    = useRef<HTMLInputElement | null>(null);
 
   const homeCurrency = useTripStore((s) => s.homeCurrency);
   const travelStyle  = useTripStore((s) => s.travelStyle);
@@ -529,6 +532,30 @@ export const TripCreator = ({
   }, [query, picked]);
 
   useEffect(() => {
+    if (!addingStop) return;
+
+    const scrollTimer = window.setTimeout(() => {
+      addStopPanelRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 80);
+
+    const focusTimer = window.setTimeout(() => {
+      stopInputRef.current?.focus({ preventScroll: true });
+      addStopPanelRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 320);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(focusTimer);
+    };
+  }, [addingStop]);
+
+  useEffect(() => {
     if (!addingStop || stopQuery.trim().length < 2) {
       setStopSuggestions([]); setStopSearching(false); return;
     }
@@ -596,20 +623,40 @@ export const TripCreator = ({
     setStops([]);
   };
 
-  const addStop = useCallback((cityName: string, meta?: Pick<CityEntry, 'countryCode' | 'lat' | 'lon'>) => {
+  const addStop = useCallback(async (cityName: string, meta?: Pick<CityEntry, 'countryCode' | 'lat' | 'lon'>) => {
     haptic(8);
     const allocated   = stops.reduce((a, s) => a + s.nbDays, 0);
     const remaining   = Math.max(1, days - allocated);
     const defaultDays = Math.max(1, remaining);
+    const countryCode = meta?.countryCode ?? picked?.countryCode;
+
+    let lat = meta?.lat;
+    let lon = meta?.lon;
+
+    // Une app premium ne doit pas dépendre d'une base locale limitée :
+    // si l'utilisateur ajoute une ville rapide/saisie sans coordonnées,
+    // on tente Photon/Nominatim tout de suite et on stocke les coords dans le voyage.
+    if ((!Number.isFinite(lat) || !Number.isFinite(lon)) && countryCode) {
+      try {
+        const geo = await geocodeCity(cityName, countryCode);
+        if (geo && !geo.isFallback) {
+          lat = geo.lat;
+          lon = geo.lon;
+        }
+      } catch {
+        // La météo regéocodera plus tard si nécessaire.
+      }
+    }
+
     setStops((prev) => [
       ...prev,
       {
         id:          crypto.randomUUID(),
         city:        cityName,
         nbDays:      defaultDays,
-        countryCode: meta?.countryCode ?? picked?.countryCode,
-        lat:         meta?.lat,
-        lon:         meta?.lon,
+        countryCode,
+        lat,
+        lon,
       },
     ]);
     setAddingStop(false);
@@ -1308,7 +1355,8 @@ export const TripCreator = ({
                       className="overflow-hidden mb-3"
                     >
                       <div
-                        className="rounded-2xl p-4 space-y-3"
+                        ref={addStopPanelRef}
+                        className="rounded-2xl p-4 space-y-3 scroll-mt-28"
                         style={{
                           background: 'rgba(124,140,255,0.06)',
                           border:     '1px solid rgba(124,140,255,0.2)',
@@ -1364,8 +1412,14 @@ export const TripCreator = ({
                         <div className="glass rounded-xl px-4 py-3 flex items-center gap-3">
                           <MapPin size={13} className="text-white/35 flex-shrink-0" />
                           <input
+                            ref={stopInputRef}
                             value={stopQuery}
                             onChange={(e) => setStopQuery(e.target.value)}
+                            onFocus={() => {
+                              window.setTimeout(() => {
+                                addStopPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }, 120);
+                            }}
                             placeholder="Rechercher une ville..."
                             className="flex-1 bg-transparent outline-none text-sm font-medium placeholder-white/30"
                           />
