@@ -11,7 +11,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, X, AlertTriangle, FileUp, FileText, Crown } from 'lucide-react';
+import { Plus, Trash2, X, AlertTriangle, FileUp, FileText, Crown, Camera } from 'lucide-react';
 import { useTripContext } from '../cockpit/useTripContext';
 import { useTripStore } from '../../store/tripStore';
 import { GlassCard } from '../../shared/GlassCard';
@@ -47,6 +47,78 @@ const formatDateRelative = (iso: string): string => {
     return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   } catch {
     return iso;
+  }
+};
+
+const IMAGE_OPTIMIZE_MAX_EDGE = 2200;
+const IMAGE_OPTIMIZE_QUALITY = 0.84;
+const IMAGE_OPTIMIZE_MIN_SIZE = 900 * 1024;
+
+const isOptimizableImage = (file: File) => (
+  file.type.startsWith('image/')
+  && file.type !== 'image/gif'
+  && file.type !== 'image/svg+xml'
+);
+
+const imageFileNameToJpeg = (name: string) => {
+  const base = name.replace(/\.[^.]+$/, '').trim() || 'document-photo';
+  return `${base}.jpg`;
+};
+
+const loadImage = (file: File): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    resolve(img);
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    reject(new Error('image_load_failed'));
+  };
+  img.src = url;
+});
+
+const canvasToBlob = (canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> => new Promise((resolve) => {
+  canvas.toBlob((blob) => resolve(blob), type, quality);
+});
+
+const optimizeImageFile = async (file: File): Promise<File> => {
+  if (!isOptimizableImage(file) || file.size < IMAGE_OPTIMIZE_MIN_SIZE) return file;
+
+  try {
+    const img = await loadImage(file);
+    const sourceWidth = img.naturalWidth || img.width;
+    const sourceHeight = img.naturalHeight || img.height;
+    if (!sourceWidth || !sourceHeight) return file;
+
+    const scale = Math.min(1, IMAGE_OPTIMIZE_MAX_EDGE / Math.max(sourceWidth, sourceHeight));
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+
+    // Fond blanc volontaire : les documents scannés/photos doivent rester propres,
+    // même si la source est un PNG avec transparence.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const blob = await canvasToBlob(canvas, 'image/jpeg', IMAGE_OPTIMIZE_QUALITY);
+    if (!blob || blob.size >= file.size) return file;
+
+    return new File([blob], imageFileNameToJpeg(file.name), {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    });
+  } catch {
+    // Si le navigateur ne sait pas décoder le format source, on garde l’original.
+    return file;
   }
 };
 
@@ -406,6 +478,7 @@ export const Documents = () => {
   const [premiumModal, setPremiumModal]   = useState(false);
   const [adding, setAdding]               = useState(false);
   const fileInputRef                      = useRef<HTMLInputElement>(null);
+  const cameraInputRef                    = useRef<HTMLInputElement>(null);
 
   // ✅ V5.1 — Quick Add : input caché dédié + catégorie mémorisée
   const quickAddCategory                  = useRef<DocCategory>('ticket');
@@ -465,22 +538,44 @@ export const Documents = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleCameraSelect = () => {
+    cameraInputRef.current?.click();
+  };
 
-    if (file.size > MAX_DOC_SIZE) {
-      setSizeAlert({ name: file.name, size: file.size });
-      e.target.value = '';
+  const applyPickedFile = async (file: File, fallbackName?: string) => {
+    const preparedFile = await optimizeImageFile(file);
+
+    if (preparedFile.size > MAX_DOC_SIZE) {
+      setSizeAlert({ name: preparedFile.name, size: preparedFile.size });
       return;
     }
 
-    setSelectedFile(file);
+    setSelectedFile(preparedFile);
     if (!docName.trim()) {
-      const nameWithoutExt = file.name.replace(/\.[^.]+$/, '');
-      setDocName(nameWithoutExt);
+      const nameWithoutExt = preparedFile.name.replace(/\.[^.]+$/, '');
+      setDocName(fallbackName ?? nameWithoutExt);
     }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     e.target.value = '';
+    if (!file) return;
+    await applyPickedFile(file);
+  };
+
+  const handleCameraFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const dateLabel = new Date().toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    await applyPickedFile(file, `Photo document — ${dateLabel}`);
   };
 
   // ── Ajout via bottom sheet ────────────────────────────────────────────
@@ -544,9 +639,11 @@ export const Documents = () => {
     const file = e.target.files?.[0];
     if (!file || !trip) return;
 
-    // Vérification taille
-    if (file.size > MAX_DOC_SIZE) {
-      setSizeAlert({ name: file.name, size: file.size });
+    const preparedFile = await optimizeImageFile(file);
+
+    // Vérification taille après optimisation image éventuelle
+    if (preparedFile.size > MAX_DOC_SIZE) {
+      setSizeAlert({ name: preparedFile.name, size: preparedFile.size });
       e.target.value = '';
       return;
     }
@@ -566,15 +663,15 @@ export const Documents = () => {
 
     try {
       // Sauvegarder en binaire dans IndexedDB
-      await DocStorage.save(trip.id, docId, file);
+      await DocStorage.save(trip.id, docId, preparedFile);
 
       // Métadonnées dans le store
       const newDoc: TripDocument = {
         id:        docId,
-        name:      file.name.replace(/\.[^.]+$/, ''),
+        name:      preparedFile.name.replace(/\.[^.]+$/, ''),
         category,
-        size:      file.size,
-        fileType:  detectFileType(file.name),
+        size:      preparedFile.size,
+        fileType:  detectFileType(preparedFile.name),
         createdAt: new Date().toISOString(),
       };
 
@@ -940,8 +1037,8 @@ export const Documents = () => {
             </div>
           </div>
 
-          {/* Sélecteur de fichier */}
-          <div>
+          {/* Sélecteur de fichier / appareil photo */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               onClick={handleFileSelect}
               className="w-full p-4 rounded-xl text-left flex items-center gap-3 tap"
@@ -966,11 +1063,45 @@ export const Documents = () => {
                 </div>
               </div>
             </button>
+
+            <button
+              onClick={handleCameraSelect}
+              className="w-full p-4 rounded-xl text-left flex items-center gap-3 tap"
+              style={{
+                background: 'rgba(var(--accent-from-rgb), 0.08)',
+                border: '1px solid rgba(var(--accent-from-rgb), 0.22)',
+                borderStyle: 'dashed',
+              }}
+            >
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, var(--accent-from), var(--accent-to))' }}
+              >
+                <Camera size={18} className="text-white" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--accent-label)' }}>
+                  Prendre une photo
+                </div>
+                <div className="text-[11px] text-white/35">
+                  Appareil photo du téléphone
+                </div>
+              </div>
+            </button>
+
             <input
               ref={fileInputRef}
               type="file"
               accept="*/*"
               onChange={handleFileChange}
+              className="hidden"
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleCameraFileChange}
               className="hidden"
             />
           </div>
