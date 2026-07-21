@@ -481,7 +481,7 @@ export const Profil = () => {
                 return (
                   <button
                     onClick={() => { haptic(6); applyTheme(signatureTheme.key); setTheme(signatureTheme.key); }}
-                    className="w-full rounded-[22px] p-3 flex items-center gap-3 text-left tap transition-all mb-3 relative overflow-hidden"
+                    className="w-full rounded-[22px] p-3 flex items-center gap-3 text-left tap transition-all mb-3 relative overflow-hidden isolate"
                     style={{
                       background: signatureActive
                         ? 'linear-gradient(135deg, rgba(124,58,237,0.22) 0%, rgba(200,74,166,0.13) 58%, rgba(255,122,0,0.14) 100%)'
@@ -490,7 +490,12 @@ export const Profil = () => {
                       boxShadow: signatureActive ? '0 12px 32px rgba(124,58,237,0.16)' : 'none',
                     }}
                   >
-                    <div className="absolute -right-10 -top-10 w-28 h-28 rounded-full blur-3xl opacity-20" style={{ background: '#FF7A00' }} />
+                    <div
+                      className="absolute inset-0 rounded-[inherit] pointer-events-none -z-10"
+                      style={{
+                        background: 'radial-gradient(circle at 92% 12%, rgba(255,122,0,0.20) 0%, rgba(255,122,0,0.10) 28%, transparent 56%)',
+                      }}
+                    />
                     <div className="w-9 h-9 flex items-center justify-center flex-shrink-0 relative" style={{ filter: 'drop-shadow(0 0 12px rgba(124,58,237,0.35)) drop-shadow(0 0 8px rgba(255,122,0,0.14))' }}>
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="-rotate-12" aria-hidden="true">
                         <defs>
