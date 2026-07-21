@@ -1,0 +1,4 @@
+@"
+User-agent: *
+Allow: /
+"@ | Out-File -FilePath "robots.txt" -Encoding UTF8
