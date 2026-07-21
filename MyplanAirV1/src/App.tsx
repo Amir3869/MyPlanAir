@@ -2,14 +2,42 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@clerk/clerk-react';
-import { useTripStore } from './store/tripStore';
+import { useTripStore, type AppTheme } from './store/tripStore';
 import { ErrorBoundary } from './shared/ErrorBoundary';
 import { AuthPage } from './features/auth/AuthPage';
+import { OnboardingFlow } from './features/auth/OnboardingFlow';
 import { SSOCallback } from './features/auth/SSOCallback';
 import { NavTabBar } from './shared/NavTabBar';
 import { motion } from 'framer-motion';
 import { migrateDocsToIndexedDB } from './utils/docMigration';
 
+const APP_THEMES: Record<AppTheme, {
+  base: string;
+  accentFrom: string;
+  accentTo: string;
+  accentRgb: string;
+  accentLbl: string;
+}> = {
+  dark:       { base: '#07070b', accentFrom: '#7c8cff', accentTo: '#ec4899', accentRgb: '124,140,255', accentLbl: '#a5b4fc' },
+  myplanair:  { base: '#07070b', accentFrom: '#7C3AED', accentTo: '#FF7A00', accentRgb: '124,58,237',  accentLbl: '#FDBA74' },
+  ocean:      { base: '#020d1a', accentFrom: '#00d4ff', accentTo: '#0066ff', accentRgb: '0,212,255',  accentLbl: '#67e8f9' },
+  sunset:     { base: '#0f0608', accentFrom: '#ff6b35', accentTo: '#ec4899', accentRgb: '255,107,53', accentLbl: '#fdba74' },
+  forest:     { base: '#040d06', accentFrom: '#56c5a4', accentTo: '#00d4ff', accentRgb: '86,197,164', accentLbl: '#6ee7b7' },
+  minimal:    { base: '#0d0d0d', accentFrom: '#ffffff', accentTo: '#a0a0a0', accentRgb: '255,255,255', accentLbl: '#e5e5e5' },
+};
+
+const applyStoredTheme = (themeKey: AppTheme) => {
+  const theme = APP_THEMES[themeKey] ?? APP_THEMES.myplanair;
+  const root = document.documentElement;
+  root.style.setProperty('--s-base', theme.base);
+  root.style.setProperty('--c-night', theme.accentFrom);
+  root.style.setProperty('--c-accent', theme.accentFrom);
+  root.style.setProperty('--accent-from', theme.accentFrom);
+  root.style.setProperty('--accent-to', theme.accentTo);
+  root.style.setProperty('--accent-from-rgb', theme.accentRgb);
+  root.style.setProperty('--accent-label', theme.accentLbl);
+  document.body.style.background = theme.base;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lazy loading — les pages ne sont chargées QUE si l'utilisateur y accède
@@ -122,7 +150,7 @@ const ProtectedRoutes = () => {
 
   if (!isLoaded) return <ClerkLoader />;
   if (!isSignedIn) return <AuthPage />;
-  if (!onboardingDone) return <AuthPage />;
+  if (!onboardingDone) return <OnboardingFlow onComplete={() => {}} />;
 
   return (
     <Routes>
@@ -161,6 +189,12 @@ const ProtectedRoutes = () => {
 // App principale
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
+  const theme = useTripStore((s) => s.theme);
+
+  useEffect(() => {
+    applyStoredTheme(theme);
+  }, [theme]);
+
   return (
     <ErrorBoundary>
       <BrowserRouter>
