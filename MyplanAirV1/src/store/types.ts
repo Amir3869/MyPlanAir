@@ -242,7 +242,7 @@ export const formatFileSize = (bytes: number): string => {
 };
 
 /** Taille maximale par fichier (10 MB) */
-export const MAX_DOC_SIZE = 10 * 1024 * 1024;
+export const MAX_DOC_SIZE = 20 * 1024 * 1024;
 
 /** Limite temporaire de documents par voyage pendant la phase de test */
 export const FREE_DOC_LIMIT = 10;
