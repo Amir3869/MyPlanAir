@@ -329,10 +329,17 @@ export const geocodeCity = async (
       const data = await res.json();
       const features = data.features;
       if (features && features.length > 0) {
+        // Ne jamais prendre `features[0]` si le pays ne correspond pas :
+        // une ville homonyme dans un autre pays donnerait une mauvaise météo.
+        // Exemple : road trip Maroc avec une ville répétée/homonyme.
         const match = features.find(
           (f: { properties?: { countrycode?: string } }) =>
             f.properties?.countrycode?.toUpperCase() === countryCode.toUpperCase()
-        ) ?? features[0];
+        );
+
+        if (!match) {
+          throw new Error('no_country_match');
+        }
 
         const lon = match.geometry?.coordinates?.[0];
         const lat = match.geometry?.coordinates?.[1];
