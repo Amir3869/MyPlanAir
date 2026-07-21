@@ -94,9 +94,9 @@ export default defineConfig({
       },
 
       manifest: {
-        name:             "MyTrip — Carnet de Voyage Premium",
-        short_name:       "MyTrip",
-        description:      "Organisez vos voyages avec style et intelligence. Gratuit.",
+        name:             "My Plan’Air — Carnet de Voyage Premium",
+        short_name:       "My Plan’Air",
+        description:      "My Plan’Air organise vos voyages avec style et intelligence. Gratuit.",
         theme_color:      "#07070b",
         background_color: "#07070b",
         display:          "standalone",
