@@ -4,7 +4,7 @@
 // Données locales uniquement, non envoyées au cloud.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
   Activity,
@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Clock3,
   Download,
+  HardDrive,
   RefreshCw,
   Server,
   Sparkles,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GlassCard } from '../../shared/GlassCard';
+import { BottomSheet } from '../../shared/BottomSheet';
 import { useToast } from '../../shared/Toast';
 import { haptic } from '../../utils/haptic';
 import {
@@ -49,6 +51,68 @@ const SERVICE_LABELS: Record<UsageService, { label: string; short: string; emoji
 
 const formatNumber = (value: number) => new Intl.NumberFormat('fr-FR').format(Math.round(value));
 
+const AI_MODEL_LIMITS = {
+  'openai/gpt-oss-120b': {
+    provider: 'Groq',
+    label: 'GPT OSS 120B',
+    rpm: 30,
+    rpd: 1_000,
+    tpm: 8_000,
+    tpd: 200_000,
+    source: 'Limite Groq Free officielle',
+  },
+  'openai/gpt-oss-20b': {
+    provider: 'Groq',
+    label: 'GPT OSS 20B',
+    rpm: 30,
+    rpd: 1_000,
+    tpm: 8_000,
+    tpd: 200_000,
+    source: 'Limite Groq Free officielle',
+  },
+  'mistral-small-latest': {
+    provider: 'Mistral',
+    label: 'Mistral Small latest',
+    rps: 0.03,
+    rpm: 0.03 * 60,
+    rpd: Math.floor(0.03 * 60 * 60 * 24),
+    tpm: 25_000,
+    tpd: 25_000 * 60 * 24,
+    source: 'Limite lue sur ton dashboard Mistral — à confirmer si le modèle exact change',
+  },
+} as const;
+
+type AiModelId = keyof typeof AI_MODEL_LIMITS;
+
+const TRACKED_AI_MODELS = Object.keys(AI_MODEL_LIMITS) as AiModelId[];
+
+const AI_DAILY_TOKEN_LIMIT = TRACKED_AI_MODELS.reduce((sum, model) => sum + (AI_MODEL_LIMITS[model].tpd ?? 0), 0);
+const AI_WEEKLY_TOKEN_LIMIT = AI_DAILY_TOKEN_LIMIT * 7;
+
+const formatCompactNumber = (value?: number) => {
+  if (!value || value <= 0) return '—';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`;
+  return formatNumber(value);
+};
+
+const formatRate = (value?: number, unit = '/min') => {
+  if (!value || value <= 0) return '—';
+  return `${value < 1 ? value.toFixed(2) : value.toFixed(value % 1 === 0 ? 0 : 1)} ${unit}`;
+};
+
+const formatBytes = (bytes?: number) => {
+  if (!bytes || bytes <= 0) return '—';
+  const units = ['o', 'Ko', 'Mo', 'Go'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+};
+
 const formatDuration = (ms?: number) => {
   if (!ms || ms <= 0) return '—';
   if (ms < 1000) return `${Math.round(ms)} ms`;
@@ -74,12 +138,14 @@ const Donut = ({
   limit,
   color,
   caption,
+  onClick,
 }: {
   label: string;
   value: number;
   limit?: number;
   color: string;
   caption?: string;
+  onClick?: () => void;
 }) => {
   const pct = percent(value, limit);
   const radius = 34;
@@ -87,7 +153,10 @@ const Donut = ({
   const dash = circumference * (pct / 100);
 
   return (
-    <GlassCard className="p-4 relative overflow-hidden">
+    <GlassCard
+      className={`p-4 relative overflow-hidden ${onClick ? 'cursor-pointer tap' : ''}`}
+      onClick={onClick}
+    >
       <div
         className="absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl opacity-20"
         style={{ background: color }}
@@ -233,7 +302,7 @@ const calculateHealthStatus = ({
   if (avgDurationMs > 10000) score -= 10;
   else if (avgDurationMs > 5000) score -= 5;
 
-  const dailyTokenLimit = USAGE_TEST_LIMITS.aiTokens?.dailyTokens ?? 0;
+  const dailyTokenLimit = AI_DAILY_TOKEN_LIMIT;
   if (dailyTokenLimit > 0 && totalTokens / dailyTokenLimit >= 0.8) score -= 8;
 
   const servicesOverLimit = (Object.keys(SERVICE_LABELS) as UsageService[]).filter((service) => {
@@ -289,7 +358,7 @@ const HealthCard = ({
 
     <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
       {[
-        { label: 'Tokens IA', value: `${formatNumber(totalTokens)} / ${formatNumber(USAGE_TEST_LIMITS.aiTokens?.dailyTokens ?? 0)}` },
+        { label: 'Tokens IA', value: `${formatNumber(totalTokens)} / ${formatCompactNumber(AI_DAILY_TOKEN_LIMIT)}` },
         { label: 'Temps moyen', value: formatDuration(avgDurationMs) },
         { label: 'Services actifs', value: `${activeServices} / 9` },
         { label: 'Alertes', value: alertCount === 0 ? 'Aucune' : String(alertCount) },
@@ -305,6 +374,210 @@ const HealthCard = ({
       ))}
     </div>
   </GlassCard>
+);
+
+type StorageEstimateState = {
+  supported: boolean;
+  usage?: number;
+  quota?: number;
+};
+
+const StorageCard = ({ storage }: { storage: StorageEstimateState }) => {
+  const usage = storage.usage ?? 0;
+  const quota = storage.quota ?? 0;
+  const remaining = Math.max(0, quota - usage);
+  const pct = quota > 0 ? Math.min(100, Math.round((usage / quota) * 100)) : 0;
+  const color = pct >= 85 ? '#ef4444' : pct >= 65 ? '#f0b24a' : '#56c5a4';
+
+  return (
+    <GlassCard className="p-4 relative overflow-hidden mb-4">
+      <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full blur-3xl opacity-20" style={{ background: color }} />
+      <div className="relative flex items-start gap-4">
+        <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: `${color}22` }}>
+          <HardDrive size={19} style={{ color }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold tracking-tight">Stockage appareil / PWA</div>
+              <div className="text-[11px] text-white/35">Estimation navigateur pour ce domaine</div>
+            </div>
+            <div className="text-xl font-bold font-display" style={{ color }}>{storage.supported ? `${pct}%` : '—'}</div>
+          </div>
+
+          <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: `linear-gradient(90deg, ${color}, #a5b4fc)` }}
+              initial={{ width: 0 }}
+              animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.7, ease: 'easeOut' }}
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            {[
+              { label: 'Utilisé', value: storage.supported ? formatBytes(usage) : 'Non dispo' },
+              { label: 'Restant', value: storage.supported ? formatBytes(remaining) : '—' },
+              { label: 'Quota estimé', value: storage.supported ? formatBytes(quota) : '—' },
+            ].map((item) => (
+              <div key={item.label} className="rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div className="text-[10px] uppercase tracking-wider text-white/30">{item.label}</div>
+                <div className="text-xs font-semibold text-white/75 mt-0.5 truncate">{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-[11px] text-white/30 mt-3 leading-relaxed">
+            Inclut IndexedDB, cache PWA et autres données locales du site. Sur iOS/Safari, cette valeur reste une estimation et peut évoluer selon l’espace disponible.
+          </div>
+        </div>
+      </div>
+    </GlassCard>
+  );
+};
+
+type AiModelUsageStat = {
+  model: string;
+  provider: string;
+  callsDay: number;
+  callsWeek: number;
+  promptTokensDay: number;
+  completionTokensDay: number;
+  totalTokensDay: number;
+  totalTokensWeek: number;
+  avgTokensDay: number;
+  endpoints: string[];
+};
+
+const AiModelCard = ({ stat }: { stat: AiModelUsageStat }) => {
+  const limit = AI_MODEL_LIMITS[stat.model as AiModelId];
+  const dailyTokenLimit = limit?.tpd;
+  const dailyRequestLimit = limit?.rpd;
+  const tokenPct = percent(stat.totalTokensDay, dailyTokenLimit);
+  const requestPct = percent(stat.callsDay, dailyRequestLimit);
+  const tokenRemaining = dailyTokenLimit ? Math.max(0, dailyTokenLimit - stat.totalTokensDay) : undefined;
+  const requestRemaining = dailyRequestLimit ? Math.max(0, dailyRequestLimit - stat.callsDay) : undefined;
+  const color = tokenPct >= 85 || requestPct >= 85 ? '#ef4444' : tokenPct >= 65 || requestPct >= 65 ? '#f0b24a' : '#56c5a4';
+  const rps = limit && 'rps' in limit ? limit.rps : undefined;
+
+  return (
+    <div className="rounded-3xl p-4 relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="absolute -right-10 -top-10 w-28 h-28 rounded-full blur-3xl opacity-18" style={{ background: color }} />
+      <div className="relative flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wider text-white/35">{limit?.provider ?? stat.provider}</div>
+          <div className="text-sm font-bold tracking-tight mt-0.5 truncate">{limit?.label ?? stat.model}</div>
+          <div className="text-[11px] text-white/35 truncate mt-0.5">{stat.model}</div>
+        </div>
+        <MiniProgressRing value={tokenPct} color={color} size={54} stroke={6} />
+      </div>
+
+      <div className="relative mt-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-white/30">Tokens aujourd’hui</div>
+            <div className="text-xl font-bold font-display tracking-tight mt-0.5">
+              {formatNumber(stat.totalTokensDay)}
+              {dailyTokenLimit ? <span className="text-xs text-white/35 font-medium"> / {formatCompactNumber(dailyTokenLimit)}</span> : null}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-wider text-white/30">Restant</div>
+            <div className="text-sm font-semibold mt-0.5" style={{ color }}>{dailyTokenLimit ? formatCompactNumber(tokenRemaining) : '—'}</div>
+          </div>
+        </div>
+
+        <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <motion.div
+            className="h-full rounded-full"
+            style={{ background: `linear-gradient(90deg, ${color}, #a5b4fc)` }}
+            initial={{ width: 0 }}
+            animate={{ width: `${tokenPct}%` }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+          />
+        </div>
+      </div>
+
+      <div className="relative grid grid-cols-2 gap-2 mt-3">
+        <div className="rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-[10px] uppercase tracking-wider text-white/30">Requêtes jour</div>
+          <div className="text-xs font-semibold text-white/75 mt-0.5">
+            {formatNumber(stat.callsDay)}{dailyRequestLimit ? ` / ${formatNumber(dailyRequestLimit)}` : ''}
+          </div>
+          <div className="text-[10px] text-white/30 mt-0.5">Restant : {dailyRequestLimit ? formatNumber(requestRemaining ?? 0) : '—'}</div>
+        </div>
+        <div className="rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-[10px] uppercase tracking-wider text-white/30">Rythme max</div>
+          <div className="text-xs font-semibold text-white/75 mt-0.5">{formatCompactNumber(limit?.tpm)} tok/min</div>
+          <div className="text-[10px] text-white/30 mt-0.5">{rps ? `${rps.toFixed(2)} req/s` : formatRate(limit?.rpm)}</div>
+        </div>
+        <div className="rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-[10px] uppercase tracking-wider text-white/30">Entrée / sortie</div>
+          <div className="text-xs font-semibold text-white/75 mt-0.5">{formatCompactNumber(stat.promptTokensDay)} / {formatCompactNumber(stat.completionTokensDay)}</div>
+          <div className="text-[10px] text-white/30 mt-0.5">prompt / réponse</div>
+        </div>
+        <div className="rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-[10px] uppercase tracking-wider text-white/30">Moyenne</div>
+          <div className="text-xs font-semibold text-white/75 mt-0.5">{formatCompactNumber(stat.avgTokensDay)} tok/req</div>
+          <div className="text-[10px] text-white/30 mt-0.5">7j : {formatCompactNumber(stat.totalTokensWeek)}</div>
+        </div>
+      </div>
+
+      <div className="relative text-[11px] text-white/30 mt-3 leading-relaxed">
+        Utilisé sur : {stat.endpoints.length > 0 ? stat.endpoints.join(' · ') : 'aucun appel aujourd’hui'}
+        <span className="block mt-1">{limit?.source ?? 'Limite non renseignée'}</span>
+      </div>
+    </div>
+  );
+};
+
+const AiTokensSheet = ({
+  open,
+  onClose,
+  stats,
+  totalDay,
+  totalWeek,
+  callsDay,
+}: {
+  open: boolean;
+  onClose: () => void;
+  stats: AiModelUsageStat[];
+  totalDay: number;
+  totalWeek: number;
+  callsDay: number;
+}) => (
+  <BottomSheet open={open} onClose={onClose} title="Consommation IA" maxWidth={640}>
+    <div className="space-y-4">
+      <div className="rounded-3xl p-4 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.20), rgba(255,122,0,0.12))', border: '1px solid rgba(255,255,255,0.10)' }}>
+        <div className="absolute -right-12 -top-12 w-36 h-36 rounded-full blur-3xl opacity-24" style={{ background: '#7C3AED' }} />
+        <div className="relative">
+          <div className="text-xs uppercase tracking-wider text-white/40">Aujourd’hui</div>
+          <div className="text-3xl font-bold font-display tracking-tight mt-1">{formatNumber(totalDay)} tokens</div>
+          <div className="text-sm text-white/45 mt-1">{formatNumber(callsDay)} requête{callsDay > 1 ? 's' : ''} IA · limite totale suivie : {formatCompactNumber(AI_DAILY_TOKEN_LIMIT)} tokens/jour</div>
+        </div>
+        <div className="relative grid grid-cols-2 gap-2 mt-4">
+          <div className="rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="text-[10px] uppercase tracking-wider text-white/30">Restant jour</div>
+            <div className="text-sm font-semibold text-white/80 mt-0.5">{formatCompactNumber(Math.max(0, AI_DAILY_TOKEN_LIMIT - totalDay))}</div>
+          </div>
+          <div className="rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="text-[10px] uppercase tracking-wider text-white/30">Utilisé 7 jours</div>
+            <div className="text-sm font-semibold text-white/80 mt-0.5">{formatCompactNumber(totalWeek)} / {formatCompactNumber(AI_WEEKLY_TOKEN_LIMIT)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="text-xs uppercase tracking-wider text-white/35 px-1">Détail par modèle</div>
+      <div className="space-y-3">
+        {stats.map((stat) => <AiModelCard key={stat.model} stat={stat} />)}
+      </div>
+
+      <div className="text-[11px] text-white/30 leading-relaxed px-1">
+        Les tokens utilisés viennent du retour réel du Worker quand le provider renvoie l’usage. Les limites Groq sont journalières/minute. Les limites Mistral visibles ici sont converties depuis le débit minute/seconde de ton dashboard.
+      </div>
+    </div>
+  </BottomSheet>
 );
 
 const ServicesTestedCard = ({ active, total = 9 }: { active: number; total?: number }) => {
@@ -432,12 +705,80 @@ export const UsageConsole = () => {
   const [servicesOpen, setServicesOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState(true);
+  const [aiSheetOpen, setAiSheetOpen] = useState(false);
+  const [storageEstimate, setStorageEstimate] = useState<StorageEstimateState>({ supported: false });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const readStorageEstimate = async () => {
+      if (!navigator.storage?.estimate) {
+        if (!cancelled) setStorageEstimate({ supported: false });
+        return;
+      }
+
+      try {
+        const estimate = await navigator.storage.estimate();
+        if (!cancelled) {
+          setStorageEstimate({
+            supported: true,
+            usage: estimate.usage ?? 0,
+            quota: estimate.quota ?? 0,
+          });
+        }
+      } catch {
+        if (!cancelled) setStorageEstimate({ supported: false });
+      }
+    };
+
+    readStorageEstimate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [version]);
 
   const events = useMemo(() => getUsageEvents(), [version]);
   const dayEvents = useMemo(() => getUsageWindowEvents('day', events), [events]);
   const weekEvents = useMemo(() => getUsageWindowEvents('week', events), [events]);
   const totals = useMemo(() => getUsageTotals(dayEvents), [dayEvents]);
   const weekTotals = useMemo(() => getUsageTotals(weekEvents), [weekEvents]);
+
+  const aiModelStats = useMemo<AiModelUsageStat[]>(() => {
+    const modelIds = new Set<string>(TRACKED_AI_MODELS);
+    for (const event of weekEvents) {
+      if (event.category !== 'ai' || !event.model) continue;
+      modelIds.add(event.model);
+    }
+
+    return [...modelIds].map((model) => {
+      const dayModelEvents = dayEvents.filter((event) => event.category === 'ai' && event.model === model);
+      const weekModelEvents = weekEvents.filter((event) => event.category === 'ai' && event.model === model);
+      const promptTokensDay = dayModelEvents.reduce((sum, event) => sum + (event.tokens?.promptTokens ?? 0), 0);
+      const completionTokensDay = dayModelEvents.reduce((sum, event) => sum + (event.tokens?.completionTokens ?? 0), 0);
+      const totalTokensDay = dayModelEvents.reduce((sum, event) => sum + (event.tokens?.totalTokens ?? 0), 0);
+      const totalTokensWeek = weekModelEvents.reduce((sum, event) => sum + (event.tokens?.totalTokens ?? 0), 0);
+      const endpoints = [...new Set(dayModelEvents.map((event) => event.endpoint).filter(Boolean))];
+      const provider = dayModelEvents[0]?.provider ?? weekModelEvents[0]?.provider ?? AI_MODEL_LIMITS[model as AiModelId]?.provider ?? 'IA';
+
+      return {
+        model,
+        provider,
+        callsDay: dayModelEvents.length,
+        callsWeek: weekModelEvents.length,
+        promptTokensDay,
+        completionTokensDay,
+        totalTokensDay,
+        totalTokensWeek,
+        avgTokensDay: dayModelEvents.length > 0 ? Math.round(totalTokensDay / dayModelEvents.length) : 0,
+        endpoints,
+      };
+    }).sort((a, b) => {
+      const bKnown = TRACKED_AI_MODELS.includes(b.model as AiModelId) ? 1 : 0;
+      const aKnown = TRACKED_AI_MODELS.includes(a.model as AiModelId) ? 1 : 0;
+      return (b.totalTokensDay - a.totalTokensDay) || (bKnown - aKnown) || a.model.localeCompare(b.model);
+    });
+  }, [dayEvents, weekEvents]);
 
   const activeServiceCount = useMemo(() => (
     (Object.keys(SERVICE_LABELS) as UsageService[])
@@ -578,18 +919,24 @@ export const UsageConsole = () => {
           alertCount={alertCount}
         />
 
+        <StorageCard storage={storageEstimate} />
+
         <div className="grid sm:grid-cols-2 gap-3 mb-5">
           <Donut
             label="Tokens IA aujourd’hui"
             value={totals.totalTokens}
-            limit={USAGE_TEST_LIMITS.aiTokens?.dailyTokens}
+            limit={AI_DAILY_TOKEN_LIMIT}
             color="#ec4899"
-            caption="Total tokens réels Worker"
+            caption="Total tokens réels Worker · toucher pour détailler"
+            onClick={() => {
+              haptic(4);
+              setAiSheetOpen(true);
+            }}
           />
           <Donut
             label="Tokens IA semaine"
             value={weekTotals.totalTokens}
-            limit={USAGE_TEST_LIMITS.aiTokens?.weeklyTokens}
+            limit={AI_WEEKLY_TOKEN_LIMIT}
             color="#7c8cff"
             caption="Fenêtre locale semaine"
           />
@@ -766,6 +1113,15 @@ export const UsageConsole = () => {
           <Server size={12} /> Données de test locales · Worker 2.13-test compatible
         </div>
       </div>
+
+      <AiTokensSheet
+        open={aiSheetOpen}
+        onClose={() => setAiSheetOpen(false)}
+        stats={aiModelStats}
+        totalDay={totals.totalTokens}
+        totalWeek={weekTotals.totalTokens}
+        callsDay={dayEvents.filter((event) => event.category === 'ai').length}
+      />
     </div>
   );
 };
