@@ -1,15 +1,23 @@
 // src/features/auth/OnboardingFlow.tsx
-import { useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronRight, Sparkles, ArrowLeft } from 'lucide-react';
-import { useTripStore, type AppTheme, USER_EMOJIS } from '../../store/tripStore';
+import { Camera, Check, ChevronRight, Sparkles, ArrowLeft, UserRound, MapPin, Search, X } from 'lucide-react';
+import { useTripStore, type AppTheme } from '../../store/tripStore';
 import { CURRENCIES } from '../../api/countries';
 import { haptic } from '../../utils/haptic';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
-type OnboardingStep = 1 | 2 | 3;
+type OnboardingStep = 1 | 2 | 3 | 4;
+
+type HomeCityResult = {
+  name: string;
+  country: string;
+  countryCode: string;
+  lat: number;
+  lon: number;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DONNÉES STATIQUES
@@ -90,18 +98,18 @@ const STARS = [
 // CONFETTIS FIXES
 // ─────────────────────────────────────────────────────────────────────────────
 const CONFETTIS = [
-  { s: 7,  c: '#7c8cff', l: 15, t: 25 },
-  { s: 10, c: '#ec4899', l: 32, t: 18 },
-  { s: 8,  c: '#56c5a4', l: 48, t: 32 },
-  { s: 6,  c: '#f0b24a', l: 62, t: 20 },
-  { s: 9,  c: '#7c8cff', l: 75, t: 28 },
-  { s: 7,  c: '#ec4899', l: 88, t: 15 },
-  { s: 11, c: '#56c5a4', l: 22, t: 65 },
-  { s: 8,  c: '#f0b24a', l: 40, t: 72 },
-  { s: 6,  c: '#7c8cff', l: 55, t: 60 },
-  { s: 9,  c: '#ec4899', l: 68, t: 78 },
-  { s: 7,  c: '#56c5a4', l: 82, t: 68 },
-  { s: 10, c: '#f0b24a', l: 12, t: 80 },
+  { s: 7,  c: '#7C3AED', l: 15, t: 25 },
+  { s: 10, c: '#C84AA6', l: 32, t: 18 },
+  { s: 8,  c: '#FF7A00', l: 48, t: 32 },
+  { s: 6,  c: '#7C3AED', l: 62, t: 20 },
+  { s: 9,  c: '#C84AA6', l: 75, t: 28 },
+  { s: 7,  c: '#FF7A00', l: 88, t: 15 },
+  { s: 11, c: '#7C3AED', l: 22, t: 65 },
+  { s: 8,  c: '#C84AA6', l: 40, t: 72 },
+  { s: 6,  c: '#FF7A00', l: 55, t: 60 },
+  { s: 9,  c: '#7C3AED', l: 68, t: 78 },
+  { s: 7,  c: '#C84AA6', l: 82, t: 68 },
+  { s: 10, c: '#FF7A00', l: 12, t: 80 },
 ] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,20 +132,19 @@ const applyThemeLive = (themeKey: AppTheme) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const BrandMark = () => (
   <div className="flex items-center gap-2 mb-8">
-    <div
-      className="w-7 h-7 rounded-xl flex items-center justify-center"
-      style={{
-        background: 'linear-gradient(135deg, var(--accent-from) 0%, var(--accent-to) 100%)',
-        boxShadow:  '0 4px 12px rgba(var(--accent-from-rgb), 0.3)',
-      }}
-    >
-      <span className="text-sm">✈️</span>
+    <div className="w-8 h-8 rounded-xl flex items-center justify-center overflow-hidden">
+      <img
+        src="/brand/logo-splash.svg"
+        alt="My Plan’Air"
+        className="max-w-none object-contain"
+        style={{ width: 70, height: 195 }}
+      />
     </div>
     <span
       className="font-bold text-sm tracking-tight"
-      style={{ color: 'rgba(255,255,255,0.5)' }}
+      style={{ color: 'rgba(255,255,255,0.58)' }}
     >
-      MyTrip
+      My Plan’Air
     </span>
   </div>
 );
@@ -230,25 +237,26 @@ const SplashScreen = ({ onDone }: { onDone: () => void }) => {
         <motion.div
           className="w-24 h-24 rounded-[32px] flex items-center justify-center mb-6"
           style={{
-            background: 'linear-gradient(135deg, #7c8cff 0%, #ec4899 100%)',
-            boxShadow:  '0 0 80px rgba(124,140,255,0.5), 0 0 160px rgba(236,72,153,0.2)',
+            background: 'linear-gradient(135deg, #7C3AED 0%, #C84AA6 58%, #FF7A00 100%)',
+            boxShadow:  '0 0 80px rgba(124,58,237,0.48), 0 0 160px rgba(255,122,0,0.20)',
           }}
           animate={{
             boxShadow: [
-              '0 0 80px rgba(124,140,255,0.5), 0 0 160px rgba(236,72,153,0.2)',
-              '0 0 120px rgba(124,140,255,0.7), 0 0 200px rgba(236,72,153,0.35)',
-              '0 0 80px rgba(124,140,255,0.5), 0 0 160px rgba(236,72,153,0.2)',
+              '0 0 80px rgba(124,58,237,0.48), 0 0 160px rgba(255,122,0,0.20)',
+              '0 0 120px rgba(124,58,237,0.66), 0 0 200px rgba(255,122,0,0.32)',
+              '0 0 80px rgba(124,58,237,0.48), 0 0 160px rgba(255,122,0,0.20)',
             ],
           }}
           transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
         >
-          <motion.span
-            className="text-5xl"
-            animate={{ y: [0, -4, 0], rotate: [-8, -12, -8] }}
+          <motion.img
+            src="/brand/logo-splash.svg"
+            alt="My Plan’Air"
+            className="max-w-none object-contain"
+            style={{ width: 206, height: 576 }}
+            animate={{ y: [0, -4, 0], scale: [1, 1.035, 1] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            ✈️
-          </motion.span>
+          />
         </motion.div>
 
         <motion.h1
@@ -257,7 +265,7 @@ const SplashScreen = ({ onDone }: { onDone: () => void }) => {
           transition={{ delay: 0.3 }}
           className="font-display text-6xl font-extrabold tracking-tighter text-white"
         >
-          MyTrip
+          My Plan’Air
         </motion.h1>
 
         <motion.p
@@ -277,7 +285,7 @@ const SplashScreen = ({ onDone }: { onDone: () => void }) => {
       >
         <motion.div
           className="h-full rounded-full"
-          style={{ background: 'linear-gradient(90deg, #7c8cff, #ec4899)' }}
+          style={{ background: 'linear-gradient(90deg, #7C3AED, #C84AA6, #FF7A00)' }}
           initial={{ width: '0%' }}
           animate={{ width: '100%' }}
           transition={{ duration: 1.6, ease: 'easeOut', delay: 0.2 }}
@@ -290,24 +298,41 @@ const SplashScreen = ({ onDone }: { onDone: () => void }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // ÉTAPE 1 — PRÉNOM + AVATAR
 // ─────────────────────────────────────────────────────────────────────────────
+const initialsFromName = (value: string): string => {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'MP';
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'MP';
+};
+
 const Step1NameAvatar = ({
   name,
-  emoji,
+  photoUrl,
   onNameChange,
-  onEmojiChange,
+  onPhotoChange,
   onNext,
 }: {
   name:          string;
-  emoji:         string;
+  photoUrl:      string | null;
   onNameChange:  (v: string) => void;
-  onEmojiChange: (v: string) => void;
+  onPhotoChange: (v: string | null) => void;
   onNext:        () => void;
 }) => {
-  const canNext     = name.trim().length >= 2;
-  const displayName = name.trim();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const canNext      = name.trim().length >= 2;
+  const displayName  = name.trim();
+  const initials     = initialsFromName(displayName);
 
-  // ✅ Sélection 16 emojis depuis USER_EMOJIS — cohérent avec SettingsSheet
-  const AVATAR_EMOJIS = USER_EMOJIS.slice(0, 16);
+  const handleFile = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        onPhotoChange(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   return (
     <motion.div
@@ -319,7 +344,7 @@ const Step1NameAvatar = ({
       className="w-full"
     >
       <BrandMark />
-      <StepIndicator current={1} total={3} />
+      <StepIndicator current={1} total={4} />
 
       <div className="mb-6">
         <h2 className="font-display text-4xl sm:text-5xl font-extrabold tracking-tighter leading-tight">
@@ -336,15 +361,89 @@ const Step1NameAvatar = ({
           </span>
         </h2>
         <p className="text-white/45 text-base mt-3 leading-relaxed">
-          Pour que MyTrip te parle comme un ami.
+          Ajoute une photo ou garde un avatar premium par défaut.
         </p>
       </div>
+
+      {/* Profil preview */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+        className="mb-4 rounded-[26px] p-4 flex items-center gap-4"
+        style={{
+          background: 'linear-gradient(135deg, rgba(124,58,237,0.12) 0%, rgba(255,255,255,0.045) 55%, rgba(255,122,0,0.08) 100%)',
+          border: '1px solid rgba(255,255,255,0.10)',
+          backdropFilter: 'blur(24px)',
+        }}
+      >
+        <div
+          className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0"
+          style={{
+            background: photoUrl
+              ? 'rgba(255,255,255,0.06)'
+              : 'linear-gradient(135deg, rgba(124,58,237,0.95) 0%, rgba(200,74,166,0.86) 58%, rgba(255,122,0,0.82) 100%)',
+            border: '1px solid rgba(255,255,255,0.18)',
+            boxShadow: '0 14px 42px rgba(124,58,237,0.22)',
+          }}
+        >
+          {photoUrl ? (
+            <img src={photoUrl} alt="Photo de profil" className="w-full h-full object-cover" />
+          ) : displayName ? (
+            <span className="text-2xl font-black tracking-tight text-white">{initials}</span>
+          ) : (
+            <UserRound size={38} className="text-white/82" strokeWidth={1.8} />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-white/88">Ton profil</div>
+          <div className="text-xs text-white/40 mt-0.5 leading-relaxed">
+            {photoUrl ? 'Photo ajoutée · modifiable plus tard' : 'Avatar par défaut · initiales automatiques'}
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              type="button"
+              onClick={() => { haptic(4); fileInputRef.current?.click(); }}
+              className="h-9 px-3 rounded-xl text-xs font-semibold tap flex items-center gap-2"
+              style={{
+                background: 'rgba(var(--accent-from-rgb),0.14)',
+                border: '1px solid rgba(var(--accent-from-rgb),0.24)',
+                color: 'var(--accent-label)',
+              }}
+            >
+              <Camera size={14} /> Ajouter une photo
+            </button>
+            {photoUrl && (
+              <button
+                type="button"
+                onClick={() => { haptic(4); onPhotoChange(null); }}
+                className="h-9 px-3 rounded-xl text-xs font-semibold tap"
+                style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.52)' }}
+              >
+                Retirer
+              </button>
+            )}
+          </div>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            handleFile(event.target.files?.[0]);
+            event.target.value = '';
+          }}
+        />
+      </motion.div>
 
       {/* Input prénom */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
+        transition={{ delay: 0.12 }}
         className="mb-3"
       >
         <div
@@ -401,14 +500,13 @@ const Step1NameAvatar = ({
             animate={{ opacity: 1, y: 0, scale: 1   }}
             exit={{ opacity: 0, y: 4, scale: 0.97   }}
             transition={{ type: 'spring', damping: 22, stiffness: 280 }}
-            className="mb-4 px-4 py-3 rounded-2xl"
+            className="mb-6 px-4 py-3 rounded-2xl"
             style={{
               background: 'rgba(var(--accent-from-rgb), 0.08)',
               border:     '1px solid rgba(var(--accent-from-rgb), 0.20)',
             }}
           >
             <p className="text-sm text-white/60 leading-relaxed">
-              ✈️{' '}
               <span className="font-semibold" style={{ color: 'var(--accent-label)' }}>
                 Bonjour {displayName} !
               </span>
@@ -417,66 +515,6 @@ const Step1NameAvatar = ({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Sélecteur avatar */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="mb-6"
-      >
-        <div className="text-xs uppercase tracking-widest text-white/40 mb-3 px-1">
-          Ton avatar
-        </div>
-        <div className="grid grid-cols-8 gap-2">
-          {AVATAR_EMOJIS.map((e) => {
-            const isSelected = emoji === e;
-            return (
-              <motion.button
-                key={e}
-                whileTap={{ scale: 0.88 }}
-                onClick={() => {
-                  haptic(4);
-                  onEmojiChange(e);
-                }}
-                className="relative flex items-center justify-center rounded-2xl tap"
-                style={{
-                  height:     48,
-                  background: isSelected
-                    ? 'linear-gradient(135deg, var(--accent-from) 0%, var(--accent-to) 100%)'
-                    : 'rgba(255,255,255,0.06)',
-                  border: isSelected
-                    ? '1px solid rgba(255,255,255,0.3)'
-                    : '1px solid rgba(255,255,255,0.08)',
-                  boxShadow: isSelected
-                    ? '0 4px 16px rgba(var(--accent-from-rgb), 0.35)'
-                    : 'none',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize:   20,
-                    lineHeight: 1,
-                    fontFamily: '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif',
-                  }}
-                >
-                  {e}
-                </span>
-                {isSelected && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center"
-                    style={{ background: '#56c5a4', border: '2px solid rgba(7,7,11,1)' }}
-                  >
-                    <Check size={8} className="text-black" strokeWidth={3} />
-                  </motion.div>
-                )}
-              </motion.button>
-            );
-          })}
-        </div>
-      </motion.div>
 
       {/* Bouton continuer */}
       <motion.button
@@ -534,7 +572,7 @@ const Step2Currency = ({
       className="w-full"
     >
       <BrandMark />
-      <StepIndicator current={2} total={3} />
+      <StepIndicator current={2} total={4} />
 
       <div className="mb-7">
         <h2 className="font-display text-4xl sm:text-5xl font-extrabold tracking-tighter leading-tight">
@@ -642,6 +680,194 @@ const Step2Currency = ({
         >
           <ArrowLeft size={16} />
           Retour
+        </button>
+
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={() => { haptic([5, 20, 5]); onNext(); }}
+          className="flex-1 h-14 rounded-2xl font-bold text-white text-base flex items-center justify-center gap-2"
+          style={{
+            background: 'linear-gradient(135deg, var(--accent-from) 0%, var(--accent-to) 100%)',
+            boxShadow:  '0 8px 32px rgba(var(--accent-from-rgb), 0.35)',
+          }}
+        >
+          Continuer <ChevronRight size={18} />
+        </motion.button>
+      </div>
+    </motion.div>
+  );
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ÉTAPE 3 — VILLE DE RÉSIDENCE
+// ─────────────────────────────────────────────────────────────────────────────
+const Step3HomeCity = ({
+  selectedCity,
+  onCityChange,
+  onNext,
+  onBack,
+}: {
+  selectedCity: HomeCityResult | null;
+  onCityChange: (city: HomeCityResult | null) => void;
+  onNext:       () => void;
+  onBack:       () => void;
+}) => {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<HomeCityResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const searchCity = async (value: string) => {
+    setQuery(value);
+    onCityChange(null);
+    if (value.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(value)}&limit=5`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const nextResults = (data.features ?? [])
+        .map((f: any) => ({
+          name: f.properties?.name ?? f.properties?.city ?? '',
+          country: f.properties?.country ?? '',
+          countryCode: String(f.properties?.countrycode ?? '').toUpperCase(),
+          lat: f.geometry?.coordinates?.[1] ?? 0,
+          lon: f.geometry?.coordinates?.[0] ?? 0,
+        }))
+        .filter((item: HomeCityResult) => item.name && Number.isFinite(item.lat) && Number.isFinite(item.lon));
+      setResults(nextResults);
+    } catch {
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const chooseCity = (city: HomeCityResult) => {
+    haptic(5);
+    onCityChange(city);
+    setQuery(city.country ? `${city.name}, ${city.country}` : city.name);
+    setResults([]);
+  };
+
+  return (
+    <motion.div
+      key="step3"
+      initial={{ opacity: 0, x: 40 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -40 }}
+      transition={{ type: 'spring', damping: 26, stiffness: 280 }}
+      className="w-full"
+    >
+      <BrandMark />
+      <StepIndicator current={3} total={4} />
+
+      <div className="mb-7">
+        <h2 className="font-display text-4xl sm:text-5xl font-extrabold tracking-tighter leading-tight">
+          Ta ville de
+          <br />
+          <span
+            style={{
+              background:           'linear-gradient(135deg, var(--accent-from) 0%, var(--accent-to) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor:  'transparent',
+            }}
+          >
+            résidence ?
+          </span>
+        </h2>
+        <p className="text-white/45 text-base mt-3 leading-relaxed">
+          Pour l’heure maison et les distances.
+        </p>
+      </div>
+
+      <div className="mb-4">
+        <div
+          className="rounded-2xl px-4 py-3 flex items-center gap-3"
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: selectedCity ? '1.5px solid rgba(var(--accent-from-rgb), 0.5)' : '1.5px solid rgba(255,255,255,0.10)',
+          }}
+        >
+          <Search size={16} className="text-white/35 flex-shrink-0" />
+          <input
+            value={query}
+            onChange={(e) => searchCity(e.target.value)}
+            placeholder="Paris, Lyon, Marseille..."
+            className="flex-1 bg-transparent outline-none text-base font-semibold placeholder:text-white/25"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => { setQuery(''); setResults([]); onCityChange(null); }}
+              className="tap"
+              aria-label="Effacer la ville"
+            >
+              <X size={14} className="text-white/35" />
+            </button>
+          )}
+        </div>
+
+        {searching && (
+          <div className="text-xs text-white/35 mt-2 px-1">Recherche…</div>
+        )}
+
+        {results.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {results.map((city, index) => (
+              <button
+                key={`${city.name}-${city.countryCode}-${index}`}
+                onClick={() => chooseCity(city)}
+                className="w-full rounded-2xl px-4 py-3 flex items-center gap-3 text-left tap"
+                style={{ background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                <MapPin size={15} style={{ color: 'var(--accent-label)' }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-white/82 truncate">{city.name}</div>
+                  <div className="text-xs text-white/35 truncate">{city.country} · {city.countryCode}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {selectedCity && (
+          <div
+            className="mt-3 rounded-2xl px-4 py-3 flex items-center gap-3"
+            style={{ background: 'rgba(var(--accent-from-rgb),0.10)', border: '1px solid rgba(var(--accent-from-rgb),0.22)' }}
+          >
+            <MapPin size={15} style={{ color: 'var(--accent-label)' }} />
+            <div className="text-sm text-white/65">
+              Domicile : <span className="font-semibold text-white/88">{selectedCity.name}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={() => { haptic(6); onBack(); }}
+          className="h-14 px-5 rounded-2xl font-semibold tap flex items-center gap-2"
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            border:     '1px solid rgba(255,255,255,0.1)',
+            color:      'rgba(255,255,255,0.7)',
+          }}
+        >
+          <ArrowLeft size={16} />
+          Retour
+        </button>
+
+        <button
+          onClick={() => { haptic(4); onCityChange(null); onNext(); }}
+          className="h-14 px-4 rounded-2xl font-semibold tap"
+          style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.55)' }}
+        >
+          Plus tard
         </button>
 
         <motion.button
@@ -810,7 +1036,7 @@ const ThemePreview = ({
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ÉTAPE 3 — THÈME + PREVIEW LIVE
+// ÉTAPE 4 — THÈME + PREVIEW LIVE
 // ─────────────────────────────────────────────────────────────────────────────
 const Step3Theme = ({
   theme,
@@ -825,11 +1051,11 @@ const Step3Theme = ({
   onBack:        () => void;
   onFinish:      () => void;
 }) => {
-  const currentTheme = THEMES.find((t) => t.key === theme) ?? THEMES[0];
+  const currentTheme = THEMES.find((t) => t.key === theme) ?? THEMES.find((t) => t.key === 'myplanair') ?? THEMES[0];
 
   return (
     <motion.div
-      key="step3"
+      key="step4"
       initial={{ opacity: 0, x: 40 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -40 }}
@@ -837,7 +1063,7 @@ const Step3Theme = ({
       className="w-full"
     >
       <BrandMark />
-      <StepIndicator current={3} total={3} />
+      <StepIndicator current={4} total={4} />
 
       <div className="mb-6">
         <h2 className="font-display text-4xl sm:text-5xl font-extrabold tracking-tighter leading-tight">
@@ -858,15 +1084,67 @@ const Step3Theme = ({
         </p>
       </div>
 
-      {/* Sélecteur thèmes */}
+      {/* Thème signature */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
         className="mb-5"
       >
+        {(() => {
+          const signatureTheme = THEMES.find((t) => t.key === 'myplanair')!;
+          const isActive = theme === signatureTheme.key;
+          return (
+            <button
+              onClick={() => {
+                haptic(4);
+                onThemeChange(signatureTheme.key);
+                applyThemeLive(signatureTheme.key);
+              }}
+              className="w-full rounded-[24px] p-3 flex items-center gap-3 text-left tap relative overflow-hidden mb-3"
+              style={{
+                background: isActive
+                  ? 'linear-gradient(135deg, rgba(124,58,237,0.24) 0%, rgba(200,74,166,0.13) 58%, rgba(255,122,0,0.15) 100%)'
+                  : 'linear-gradient(135deg, rgba(124,58,237,0.13) 0%, rgba(200,74,166,0.08) 58%, rgba(255,122,0,0.08) 100%)',
+                border: isActive ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(255,255,255,0.09)',
+                boxShadow: isActive ? '0 12px 32px rgba(124,58,237,0.16)' : 'none',
+              }}
+            >
+              <div className="absolute -right-10 -top-10 w-28 h-28 rounded-full blur-3xl opacity-20" style={{ background: '#FF7A00' }} />
+              <div className="w-9 h-9 flex items-center justify-center flex-shrink-0 relative" style={{ filter: 'drop-shadow(0 0 12px rgba(124,58,237,0.35)) drop-shadow(0 0 8px rgba(255,122,0,0.14))' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="-rotate-12" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="onboarding-myplanair-plane-gradient" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%" stopColor="#7C3AED" />
+                      <stop offset="52%" stopColor="#7C3AED" />
+                      <stop offset="82%" stopColor="#C84AA6" />
+                      <stop offset="100%" stopColor="#FF7A00" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 4 2 2 4 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2Z"
+                    stroke="url(#onboarding-myplanair-plane-gradient)"
+                    strokeWidth="2.25"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0 relative">
+                <div className="text-sm font-semibold tracking-tight text-white/90">My Plan’Air</div>
+                <div className="text-xs text-white/38 mt-0.5">Thème signature</div>
+              </div>
+              {isActive && (
+                <div className="w-5 h-5 rounded-full flex items-center justify-center relative" style={{ background: 'linear-gradient(135deg, #7C3AED, #FF7A00)' }}>
+                  <Check size={12} className="text-white" strokeWidth={3} />
+                </div>
+              )}
+            </button>
+          );
+        })()}
+
         <div className="grid grid-cols-5 gap-2">
-          {THEMES.map((t) => {
+          {THEMES.filter((t) => t.key !== 'myplanair').map((t) => {
             const isActive = theme === t.key;
             return (
               <button
@@ -874,13 +1152,12 @@ const Step3Theme = ({
                 onClick={() => {
                   haptic(4);
                   onThemeChange(t.key);
-                  // ✅ Preview live — le thème change visuellement à la sélection
                   applyThemeLive(t.key);
                 }}
                 className="relative rounded-2xl p-2.5 flex flex-col items-center gap-2 tap"
                 style={{
                   background: isActive ? `${t.accentFrom}15` : 'rgba(255,255,255,0.04)',
-                  border:     isActive
+                  border: isActive
                     ? `1.5px solid ${t.accentFrom}50`
                     : '1px solid rgba(255,255,255,0.08)',
                   transition: 'all 0.2s ease',
@@ -897,29 +1174,19 @@ const Step3Theme = ({
                   </motion.div>
                 )}
 
-                {/* Préview couleur */}
                 <div
                   className="w-9 h-9 rounded-xl overflow-hidden relative flex-shrink-0"
                   style={{
                     background: t.bg,
-                    border:     `1.5px solid ${t.accentFrom}40`,
-                    boxShadow:  isActive ? `0 0 16px ${t.accentFrom}40` : 'none',
+                    border: `1.5px solid ${t.accentFrom}40`,
+                    boxShadow: isActive ? `0 0 16px ${t.accentFrom}40` : 'none',
                   }}
                 >
-                  <div
-                    className="absolute right-0 top-0 w-1/2 h-full"
-                    style={{ background: `${t.accentFrom}50` }}
-                  />
-                  <div
-                    className="absolute bottom-1.5 left-1.5 w-2 h-2 rounded-full"
-                    style={{ background: t.accentFrom }}
-                  />
+                  <div className="absolute right-0 top-0 w-1/2 h-full" style={{ background: `${t.accentFrom}50` }} />
+                  <div className="absolute bottom-1.5 left-1.5 w-2 h-2 rounded-full" style={{ background: t.accentFrom }} />
                 </div>
 
-                <div
-                  className="text-[9px] font-bold leading-tight text-center"
-                  style={{ color: isActive ? t.accentFrom : 'rgba(255,255,255,0.45)' }}
-                >
+                <div className="text-[9px] font-bold leading-tight text-center" style={{ color: isActive ? t.accentFrom : 'rgba(255,255,255,0.45)' }}>
                   {t.label}
                 </div>
               </button>
@@ -1037,17 +1304,19 @@ const FinaleScreen = ({ userName }: { userName: string }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 export const OnboardingFlow = ({ onComplete }: { onComplete: () => void }) => {
   const completeOnboarding = useTripStore((s) => s.completeOnboarding);
-  const setUserEmoji       = useTripStore((s) => s.setUserEmoji);
+  const setUserPhotoUrl    = useTripStore((s) => s.setUserPhotoUrl);
+  const setHomeCity        = useTripStore((s) => s.setHomeCity);
 
   const [phase,    setPhase]    = useState<'splash' | 'onboarding' | 'finale'>('splash');
   const [step,     setStep]     = useState<OnboardingStep>(1);
   const [userName, setUserName] = useState('');
-  const [emoji, setEmoji] = useState<string>(USER_EMOJIS[0]);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [currency, setCurrency] = useState('EUR');
-  const [theme,    setTheme]    = useState<AppTheme>('dark');
+  const [homeCity, setHomeCityChoice] = useState<HomeCityResult | null>(null);
+  const [theme,    setTheme]    = useState<AppTheme>('myplanair');
 
   const goNext = () => {
-    if (step < 3) setStep((s) => (s + 1) as OnboardingStep);
+    if (step < 4) setStep((s) => (s + 1) as OnboardingStep);
   };
 
   const goBack = () => {
@@ -1062,8 +1331,11 @@ export const OnboardingFlow = ({ onComplete }: { onComplete: () => void }) => {
       homeCurrency: currency,
       theme,
     });
-    // ✅ Sauvegarde emoji avatar séparément
-    setUserEmoji(emoji);
+    // ✅ Sauvegarde photo locale si l’utilisateur en a ajouté une.
+    setUserPhotoUrl(photoUrl);
+    if (homeCity) {
+      setHomeCity(homeCity.name, homeCity.countryCode, homeCity.lat, homeCity.lon);
+    }
 
     setPhase('finale');
     setTimeout(() => {
@@ -1119,9 +1391,9 @@ export const OnboardingFlow = ({ onComplete }: { onComplete: () => void }) => {
               {step === 1 && (
                 <Step1NameAvatar
                   name={userName}
-                  emoji={emoji}
+                  photoUrl={photoUrl}
                   onNameChange={setUserName}
-                  onEmojiChange={setEmoji}
+                  onPhotoChange={setPhotoUrl}
                   onNext={goNext}
                 />
               )}
@@ -1135,6 +1407,14 @@ export const OnboardingFlow = ({ onComplete }: { onComplete: () => void }) => {
                 />
               )}
               {step === 3 && (
+                <Step3HomeCity
+                  selectedCity={homeCity}
+                  onCityChange={setHomeCityChoice}
+                  onNext={goNext}
+                  onBack={goBack}
+                />
+              )}
+              {step === 4 && (
                 <Step3Theme
                   theme={theme}
                   userName={userName.trim() || 'Voyageur'}
