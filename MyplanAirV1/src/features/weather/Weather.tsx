@@ -257,6 +257,15 @@ export const Weather = () => {
 
   const isRoadtrip = !!(trip.isRoadtrip && destinations.length > 0);
 
+  const repeatedCityNames = useMemo(() => {
+    const counts = new Map<string, number>();
+    destinations.forEach((dest) => {
+      const key = dest.city.trim().toLowerCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return counts;
+  }, [destinations]);
+
   // ── Statut voyage ──────────────────────────────────────────────────────
   const status = tripStatus(trip.startDate, trip.endDate);
   const isPast = status === 'finished';
@@ -604,6 +613,11 @@ export const Weather = () => {
                   />
                 )}
                 {dest.city}
+                {(repeatedCityNames.get(dest.city.trim().toLowerCase()) ?? 0) > 1 && (
+                  <span className="text-[10px] text-white/35 font-semibold">
+                    J{dest.fromDay}{dest.toDay !== dest.fromDay ? `-${dest.toDay}` : ''}
+                  </span>
+                )}
               </button>
             );
           })}
