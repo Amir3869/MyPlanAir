@@ -439,6 +439,7 @@ export const TripCreator = ({
 
   const [start,           setStart]           = useState(todayISO());
   const [end,             setEnd]             = useState(addDaysISO(todayISO(), 7));
+  const [endTouched,      setEndTouched]      = useState(false);
   const [startPickerOpen, setStartPickerOpen] = useState(false);
   const [endPickerOpen,   setEndPickerOpen]   = useState(false);
 
@@ -838,8 +839,9 @@ export const TripCreator = ({
         value={start}
         title="Date de départ"
         onChange={(iso) => {
+          const currentDuration = Math.max(1, daysBetween(start, end));
           setStart(iso);
-          if (iso >= end) setEnd(addDaysISO(iso, 7));
+          setEnd(addDaysISO(iso, endTouched ? currentDuration : 7));
           setStartPickerOpen(false);
         }}
       />
@@ -852,6 +854,7 @@ export const TripCreator = ({
         title="Date de retour"
         onChange={(iso) => {
           setEnd(iso);
+          setEndTouched(true);
           setEndPickerOpen(false);
         }}
       />
@@ -918,7 +921,6 @@ export const TripCreator = ({
 
                 <div className="glass-strong rounded-2xl px-5 py-4 mb-3 flex items-center gap-3">
                   <input
-                    autoFocus
                     value={query}
                     onChange={(e) => {
                       setQuery(e.target.value);
@@ -1366,7 +1368,6 @@ export const TripCreator = ({
                         <div className="glass rounded-xl px-4 py-3 flex items-center gap-3">
                           <MapPin size={13} className="text-white/35 flex-shrink-0" />
                           <input
-                            autoFocus
                             value={stopQuery}
                             onChange={(e) => setStopQuery(e.target.value)}
                             placeholder="Rechercher une ville..."
