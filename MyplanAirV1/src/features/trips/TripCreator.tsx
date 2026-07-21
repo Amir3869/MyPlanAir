@@ -542,11 +542,7 @@ export const TripCreator = ({
         const filtered = results.filter(
           (r) => r.type === 'city' && r.countryCode === picked?.countryCode,
         );
-        setStopSuggestions(
-          filtered.length > 0
-            ? filtered.slice(0, 5)
-            : results.filter((r) => r.type === 'city').slice(0, 5),
-        );
+        setStopSuggestions(filtered.slice(0, 5));
       } catch { /* silencieux */ }
       finally { setStopSearching(false); }
     }, 300);
@@ -1637,7 +1633,7 @@ export const TripCreator = ({
                             color:      '#f0b24a',
                           }}
                         >
-                          ⚡ Indicatif
+                          Estimation
                         </div>
                       ) : null}
                     </div>
@@ -1659,6 +1655,11 @@ export const TripCreator = ({
                               {convertedBudget}{' '}
                               {rateTargetCurrency}
                             </span>
+                            {liveRateSource === 'offline' && (
+                              <span className="block mt-1 text-white/30">
+                                Taux indicatif local si la devise n’est pas disponible en live.
+                              </span>
+                            )}
                           </div>
                         )}
                       </>
