@@ -408,9 +408,12 @@ type PhotonResponse = {
   features: PhotonFeature[];
 };
 
-// Types OSM acceptés comme "ville"
+// Types OSM acceptés comme vraie destination.
+// On évite volontairement `hamlet`, `locality`, `residential`, `suburb` :
+// Photon renvoie parfois des lieux minuscules nommés comme un pays
+// ex. “Maroc” en France/Brésil/Tchad, ce qui casse la crédibilité.
 const ACCEPTED_CITY_TYPES = new Set([
-  'city', 'village', 'hamlet', 'town', 'suburb', 'island', 'locality', 'residential',
+  'city', 'town', 'village', 'island',
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -418,6 +421,25 @@ const ACCEPTED_CITY_TYPES = new Set([
 // ─────────────────────────────────────────────────────────────────────────────
 const norm = (s: string): string =>
   s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+
+const countrySearchScore = (query: string, code: string, nameFr: string): number => {
+  const nq = norm(query);
+  const fr = norm(nameFr);
+  const en = norm(COUNTRY_META[code]?.nameEn ?? '');
+  if (fr === nq || en === nq || code.toLowerCase() === nq) return 0;
+  if (fr.startsWith(nq) || en.startsWith(nq)) return 1;
+  if (fr.includes(nq) || en.includes(nq)) return 2;
+  return 99;
+};
+
+const isExactCountryQuery = (query: string): boolean =>
+  Object.entries(COUNTRY_NAMES_FR).some(([code, name]) => countrySearchScore(query, code, name) === 0);
+
+const cityNameMatchesQuery = (cityName: string, query: string): boolean => {
+  const city = norm(cityName);
+  const q = norm(query);
+  return city === q || city.startsWith(q);
+};
 
 const dedup = (entries: CityEntry[]): CityEntry[] => {
   const seen = new Set<string>();
@@ -433,11 +455,12 @@ const dedup = (entries: CityEntry[]): CityEntry[] => {
 // searchCountriesOffline
 // ─────────────────────────────────────────────────────────────────────────────
 const searchCountriesOffline = (query: string, limit = 2): CityEntry[] => {
-  const nq = norm(query);
   return Object.entries(COUNTRY_NAMES_FR)
-    .filter(([, name]) => norm(name).startsWith(nq))
+    .map(([code, name]) => ({ code, name, score: countrySearchScore(query, code, name) }))
+    .filter((item) => item.score < 99)
+    .sort((a, b) => a.score - b.score || a.name.localeCompare(b.name, 'fr'))
     .slice(0, limit)
-    .map(([code, name]) => {
+    .map(({ code, name }) => {
       const meta = COUNTRY_META[code];
       return {
         type:        'country' as const,
@@ -463,8 +486,13 @@ export const searchAll = async (
   const q = query.trim();
   if (q.length < 2) return [];
 
-  // 1. Pays offline
-  const countryMatches = searchCountriesOffline(q, 2);
+  // 1. Pays offline — si la recherche correspond exactement à un pays,
+  // on ne mélange pas avec des hameaux/villes homonymes ailleurs.
+  const countryMatches = searchCountriesOffline(q, 3);
+  const exactCountry = isExactCountryQuery(q);
+  if (exactCountry && countryMatches.length > 0) {
+    return dedup(countryMatches).slice(0, limit);
+  }
 
   // 2. Villes via Photon
   let cityMatches: CityEntry[] = [];
@@ -484,6 +512,8 @@ export const searchAll = async (
         .filter(
           (f) =>
             ACCEPTED_CITY_TYPES.has(f.properties.type) &&
+            !!f.properties.name &&
+            cityNameMatchesQuery(f.properties.name, q) &&
             !!f.properties.countrycode &&
             f.properties.countrycode.length === 2,
         )
@@ -520,10 +550,10 @@ export const searchAll = async (
     return !isCountryName;
   });
 
-  // 4. Assemblage
+  // 4. Assemblage — les pays crédibles d'abord, puis les vraies villes.
   const combined = [
-    ...filteredCities.slice(0, 4),
     ...countryMatches.slice(0, 2),
+    ...filteredCities.slice(0, 4),
   ];
 
   return dedup(combined).slice(0, limit);
