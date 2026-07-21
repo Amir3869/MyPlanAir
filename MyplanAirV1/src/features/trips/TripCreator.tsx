@@ -534,24 +534,18 @@ export const TripCreator = ({
   useEffect(() => {
     if (!addingStop) return;
 
+    // On remonte seulement le bloc d’ajout.
+    // Important mobile : on ne focus PAS l’input ici pour ne pas ouvrir le clavier
+    // tant que l’utilisateur n’a pas touché “Rechercher une ville”.
     const scrollTimer = window.setTimeout(() => {
       addStopPanelRef.current?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       });
-    }, 80);
-
-    const focusTimer = window.setTimeout(() => {
-      stopInputRef.current?.focus({ preventScroll: true });
-      addStopPanelRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    }, 320);
+    }, 120);
 
     return () => {
       window.clearTimeout(scrollTimer);
-      window.clearTimeout(focusTimer);
     };
   }, [addingStop]);
 
