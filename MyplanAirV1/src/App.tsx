@@ -99,7 +99,7 @@ const ClerkLoader = () => (
         />
         <motion.img
           src="/brand/logo-splash.svg"
-          alt="MyTrip"
+          alt="My Plan’Air"
           className="relative z-10 max-w-none object-contain"
           style={{ width: 172, height: 480 }}
           animate={{ y: [0, -3, 0], scale: [1, 1.035, 1] }}
