@@ -6,9 +6,9 @@
 import { useMemo, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, GeoJSON, CircleMarker, Popup, Polyline, Marker, useMap, useMapEvents } from 'react-leaflet';
-import type { GeoJsonObject, Feature, Geometry } from 'geojson';
+import type { GeoJsonObject, Feature, FeatureCollection, Geometry } from 'geojson';
 import type { StyleFunction } from 'leaflet';
-import { Navigation, Calendar } from 'lucide-react';
+import { Navigation, Calendar, Globe2 } from 'lucide-react';
 import { type Trip } from '../../store/tripStore';
 import { Flag } from '../../shared/Flag';
 import { fmtRange, tripStatus, dayCounter } from '../../utils/dateHelpers';
@@ -71,6 +71,63 @@ const FitTripBounds = ({
       maxZoom: 6,
     });
   }, [homeLat, homeLon, destLat, destLon, map]);
+
+  return null;
+};
+
+const collectLatLngs = (coordinates: unknown, acc: [number, number][]) => {
+  if (!Array.isArray(coordinates)) return;
+
+  if (
+    coordinates.length >= 2 &&
+    typeof coordinates[0] === 'number' &&
+    typeof coordinates[1] === 'number'
+  ) {
+    const lon = coordinates[0];
+    const lat = coordinates[1];
+    if (Number.isFinite(lat) && Number.isFinite(lon)) acc.push([lat, lon]);
+    return;
+  }
+
+  coordinates.forEach((item) => collectLatLngs(item, acc));
+};
+
+const FitGlobalCountriesBounds = ({
+  enabled,
+  geoData,
+  countryCodesKey,
+}: {
+  enabled: boolean;
+  geoData: GeoJsonObject | null;
+  countryCodesKey: string;
+}) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!enabled || !geoData || !('features' in geoData)) return;
+
+    const countryCodes = new Set(countryCodesKey.split('|').filter(Boolean));
+    if (countryCodes.size === 0) return;
+
+    const points: [number, number][] = [];
+    const featureCollection = geoData as FeatureCollection<Geometry>;
+    featureCollection.features.forEach((feature: Feature<Geometry>) => {
+      const code = getGeoFeatureCountryCode(feature);
+      if (!countryCodes.has(code)) return;
+      if ('coordinates' in feature.geometry) {
+        collectLatLngs(feature.geometry.coordinates, points);
+      }
+    });
+
+    if (points.length === 0) return;
+
+    const bounds = L.latLngBounds(points);
+    map.fitBounds(bounds, {
+      animate: true,
+      padding: [44, 44],
+      maxZoom: countryCodes.size === 1 ? 5 : 4,
+    });
+  }, [enabled, geoData, countryCodesKey, map]);
 
   return null;
 };
@@ -292,6 +349,7 @@ export const Map2DView = ({
   selectedTripId,
 }: Props) => {
   const [mapZoom, setMapZoom] = useState(3);
+  const [globalView, setGlobalView] = useState(false);
   const handleZoomChange = useCallback((zoom: number) => {
     setMapZoom((previous) => (previous === zoom ? previous : zoom));
   }, []);
@@ -299,6 +357,11 @@ export const Map2DView = ({
   const { visited, ongoing } = useMemo(
     () => computeCountrySets(trips),
     [trips],
+  );
+
+  const globalCountryCodesKey = useMemo(
+    () => [...new Set([...visited, ...ongoing])].sort().join('|'),
+    [visited, ongoing],
   );
 
   // ── Pays visité : style dynamique (couleurs thème) ────────────────────
@@ -381,12 +444,14 @@ export const Map2DView = ({
   );
 
   const selectedTrip = useMemo(
-    () => tripsWithCoords.find((item) => item.trip.id === selectedTripId) ?? null,
-    [tripsWithCoords, selectedTripId],
+    () => globalView ? null : (tripsWithCoords.find((item) => item.trip.id === selectedTripId) ?? null),
+    [globalView, tripsWithCoords, selectedTripId],
   );
 
   // ── Trajets domicile → destination ────────────────────────────────────
   const tripLines = useMemo(() => {
+    if (globalView) return [];
+
     const accentFrom = getComputedStyle(document.documentElement).getPropertyValue('--accent-from').trim() || '#7c8cff';
 
     return tripsWithCoords.map((item) => {
@@ -422,7 +487,7 @@ export const Map2DView = ({
         midLon: midPoint[1],
       };
     });
-  }, [tripsWithCoords, homeLat, homeLon, selectedTripId]);
+  }, [globalView, tripsWithCoords, homeLat, homeLon, selectedTripId]);
 
   // ── Centre de la carte ────────────────────────────────────────────────
   const mapCenter: [number, number] = useMemo(() => {
@@ -468,8 +533,17 @@ export const Map2DView = ({
           />
         )}
 
+        {/* Cadrage vue globale : tous les pays déjà faits/en cours */}
+        {globalView && !centerOnGps && (
+          <FitGlobalCountriesBounds
+            enabled={globalView}
+            geoData={geoData}
+            countryCodesKey={globalCountryCodesKey}
+          />
+        )}
+
         {/* Cadrage trajet complet : domicile + destination sélectionnée */}
-        {selectedTrip && isUsableCoord(selectedTrip.lat, selectedTrip.lon) && !centerOnGps && (
+        {selectedTrip && isUsableCoord(selectedTrip.lat, selectedTrip.lon) && !centerOnGps && !globalView && (
           <FitTripBounds
             homeLat={homeLat}
             homeLon={homeLon}
@@ -481,12 +555,14 @@ export const Map2DView = ({
         {/* Recentrage GPS */}
         {centerOnGps && gpsPos && <RecenterMap lat={gpsPos.lat} lon={gpsPos.lon} />}
 
-        {/* Domicile 🏠 */}
-        <Marker position={[homeLat, homeLon]} icon={homeIcon}>
-          <Popup>
-            <div style={{ color: 'white', fontWeight: 700, fontSize: 13 }}>🏠 Domicile</div>
-          </Popup>
-        </Marker>
+        {/* Domicile 🏠 — masqué en vue globale pour une capture progression monde */}
+        {!globalView && (
+          <Marker position={[homeLat, homeLon]} icon={homeIcon}>
+            <Popup>
+              <div style={{ color: 'white', fontWeight: 700, fontSize: 13 }}>🏠 Domicile</div>
+            </Popup>
+          </Marker>
+        )}
 
         {/* Trajets pointillés domicile → destinations */}
         {tripLines.map(({ trip, positions, color, opacity, weight, dashArray, distanceKm, flightTime, isSelected, midLat, midLon }) => (
@@ -522,7 +598,7 @@ export const Map2DView = ({
               ? '#4f46e5'
               : '#ec4899';
           const isOngoing = status === 'ongoing';
-          const isSelected = trip.id === selectedTripId;
+          const isSelected = !globalView && trip.id === selectedTripId;
 
           return (
             <CircleMarker
@@ -588,25 +664,46 @@ export const Map2DView = ({
         </div>
       )}
 
-      {/* Bouton GPS */}
-      <button
-        onClick={onRequestGPS}
-        disabled={gpsLoading}
-        className="absolute bottom-4 right-4 z-[1000] w-11 h-11 rounded-2xl flex items-center justify-center tap"
-        style={{
-          background: 'rgba(14,14,20,0.92)',
-          border: `1px solid ${COLOR.border}`,
-          backdropFilter: 'blur(16px)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        }}
-        aria-label="Ma position GPS"
-      >
-        {gpsLoading ? (
-          <span className="block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-        ) : (
-          <Navigation size={16} style={{ color: gpsPos ? COLOR.ongoing : 'rgba(255,255,255,0.6)' }} />
-        )}
-      </button>
+      {/* Boutons vue globale + GPS */}
+      <div className="absolute bottom-4 right-4 z-[1000] flex items-center gap-2">
+        <button
+          onClick={() => setGlobalView((value) => !value)}
+          className="w-11 h-11 rounded-2xl flex items-center justify-center tap"
+          style={{
+            background: globalView
+              ? 'linear-gradient(135deg, var(--accent-from), var(--accent-to))'
+              : 'rgba(14,14,20,0.92)',
+            border: globalView ? '1px solid rgba(255,255,255,0.22)' : `1px solid ${COLOR.border}`,
+            backdropFilter: 'blur(16px)',
+            boxShadow: globalView
+              ? '0 10px 34px rgba(var(--accent-from-rgb), 0.32)'
+              : '0 8px 32px rgba(0,0,0,0.4)',
+          }}
+          aria-label={globalView ? 'Revenir à la vue voyage' : 'Voir tous mes pays visités'}
+          title={globalView ? 'Vue voyage' : 'Vue globale'}
+        >
+          <Globe2 size={17} style={{ color: globalView ? '#fff' : 'rgba(255,255,255,0.68)' }} />
+        </button>
+
+        <button
+          onClick={onRequestGPS}
+          disabled={gpsLoading}
+          className="w-11 h-11 rounded-2xl flex items-center justify-center tap"
+          style={{
+            background: 'rgba(14,14,20,0.92)',
+            border: `1px solid ${COLOR.border}`,
+            backdropFilter: 'blur(16px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          }}
+          aria-label="Ma position GPS"
+        >
+          {gpsLoading ? (
+            <span className="block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <Navigation size={16} style={{ color: gpsPos ? COLOR.ongoing : 'rgba(255,255,255,0.6)' }} />
+          )}
+        </button>
+      </div>
 
       {/* Légende */}
       <div
@@ -632,10 +729,12 @@ export const Map2DView = ({
             {item.label}
           </div>
         ))}
-        <div className="flex items-center gap-1.5 text-white/35">
-          <div className="w-4 h-0 border-t border-dashed border-white/25" />
-          Trajet
-        </div>
+        {!globalView && (
+          <div className="flex items-center gap-1.5 text-white/35">
+            <div className="w-4 h-0 border-t border-dashed border-white/25" />
+            Trajet
+          </div>
+        )}
       </div>
     </div>
   );
