@@ -217,8 +217,17 @@ const TripCard = ({
 
   return (
     <div
-      className="relative rounded-[24px] overflow-hidden cursor-pointer tap"
-      style={{ height: CARD_HEIGHT, boxShadow: '0 24px 60px rgba(0,0,0,0.45)' }}
+      className="relative rounded-[24px] overflow-hidden cursor-pointer tap select-none touch-manipulation"
+      style={{
+        height: CARD_HEIGHT,
+        boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
       onPointerDown={handlePointerDown}
       onPointerUp={cancelLongPress}
       onPointerMove={cancelLongPress}
@@ -228,7 +237,7 @@ const TripCard = ({
     >
       {/* Photo de fond */}
       {trip.photoUrl ? (
-        <img src={trip.photoUrl} alt={trip.destination} className="absolute inset-0 w-full h-full object-cover" />
+        <img src={trip.photoUrl} alt={trip.destination} draggable={false} className="absolute inset-0 w-full h-full object-cover select-none" />
       ) : (
         <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(124,140,255,0.3), rgba(236,72,153,0.2))' }} />
       )}
