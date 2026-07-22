@@ -1335,7 +1335,7 @@ export const Overview = () => {
             <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
               <div className="text-4xl mb-1">📄</div>
               <div className="text-lg font-bold font-display tracking-tight leading-tight text-white/90">
-                Centralise tes essentiels
+                Centralise tes documents
               </div>
               <div className="text-[11px] text-white/42 mt-1.5 leading-relaxed">
                 Billets · réservations · papiers
