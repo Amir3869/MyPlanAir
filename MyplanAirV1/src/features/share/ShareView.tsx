@@ -145,7 +145,7 @@ export const ShareView = () => {
           }}
         >
           <Lock size={11} />
-          Mode lecture seule · Partagé via MyTrip
+          Mode lecture seule · Partagé via My Plan’Air
         </motion.div>
 
         {/* Header */}
@@ -368,7 +368,7 @@ export const ShareView = () => {
             <Plane size={22} className="text-white -rotate-12" />
           </div>
           <h3 className="font-display text-xl font-bold tracking-tight mb-1">
-            Planifié avec MyTrip
+            Planifié avec My Plan’Air
           </h3>
           <p className="text-sm text-white/55 mb-4">
             Crée ton propre carnet de voyage gratuitement.
@@ -382,7 +382,7 @@ export const ShareView = () => {
             }}
           >
             <Plane size={15} className="-rotate-12" />
-            Essayer MyTrip — Gratuit
+            Essayer My Plan’Air — Gratuit
           </a>
         </motion.div>
 
