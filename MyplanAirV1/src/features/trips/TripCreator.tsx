@@ -907,9 +907,16 @@ export const TripCreator = ({
           <div className="aurora opacity-40" />
         </div>
 
-        {/* ── Header stepper ── */}
-        <div className="sticky top-0 z-20 backdrop-blur-2xl bg-[rgba(7,7,11,0.7)] border-b border-white/5 pt-safe">
-          <div className="flex items-center justify-between px-5 py-4 max-w-2xl mx-auto">
+        {/* ── Header stepper — harmonisé thème My Plan’Air ── */}
+        <div
+          className="sticky top-0 z-20 backdrop-blur-2xl border-b border-white/5 pt-safe overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, rgba(7,7,11,0.86) 0%, rgba(124,58,237,0.24) 38%, rgba(200,74,166,0.14) 68%, rgba(255,122,0,0.10) 100%)',
+            boxShadow: '0 14px 36px rgba(0,0,0,0.26)',
+          }}
+        >
+          <div className="absolute inset-x-0 bottom-0 h-px" style={{ background: 'linear-gradient(90deg, transparent 0%, #7C3AED 18%, #C84AA6 58%, #FF7A00 86%, transparent 100%)' }} />
+          <div className="relative flex items-center justify-between px-5 py-4 max-w-2xl mx-auto">
             <button
               onClick={onClose}
               className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center tap"
