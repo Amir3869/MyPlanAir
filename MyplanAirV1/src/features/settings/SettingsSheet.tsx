@@ -352,7 +352,7 @@ export const SettingsSheet = ({
     try {
       if (navigator.share) {
         await navigator.share({
-          title: 'MyTrip — Carnet de voyage premium',
+          title: 'My Plan’Air — Carnet de voyage premium',
           text:  'Organisez vos voyages avec style et intelligence. Gratuit !',
           url:   window.location.origin,
         });
@@ -444,7 +444,7 @@ export const SettingsSheet = ({
                     {userName}
                   </div>
                 )}
-                <div className="text-sm text-white/45">Voyageur MyTrip</div>
+                <div className="text-sm text-white/45">Voyageur My Plan’Air</div>
               </div>
 
               <button
@@ -608,7 +608,7 @@ export const SettingsSheet = ({
               </div>
 
               <button
-                onClick={() => window.open('mailto:support@mytrip.app?subject=Avis MyTrip', '_blank')}
+                onClick={() => window.open('mailto:support@mytrip.app?subject=Avis My Plan’Air', '_blank')}
                 className="w-full flex items-center gap-3 px-4 py-3.5 tap hover:bg-white/5 transition border-b border-white/5"
               >
                 <div
@@ -631,7 +631,7 @@ export const SettingsSheet = ({
                 >
                   <Share2 size={15} style={{ color: '#7c8cff' }} />
                 </div>
-                <span className="flex-1 text-left font-medium">Partager MyTrip</span>
+                <span className="flex-1 text-left font-medium">Partager My Plan’Air</span>
                 <span className="text-white/30 text-xs">›</span>
               </button>
             </div>
