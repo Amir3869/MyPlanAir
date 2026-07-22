@@ -35,6 +35,7 @@ type Partner = {
   color: string;
   category: string;
   description: string;
+  logoScale?: number;
 };
 
 const PARTNERS: Partner[] = [
@@ -50,8 +51,8 @@ const PARTNERS: Partner[] = [
   { name: 'Heymondo',      domain: 'heymondo.com',      url: 'https://www.heymondo.com',      letter: 'H', color: '#4ade80', category: 'Assurance',   description: 'Assurance voyage' },
   { name: 'SafetyWing',    domain: 'safetywing.com',    url: 'https://www.safetywing.com',    letter: 'S', color: '#6366f1', category: 'Assurance',   description: 'Assurance nomade' },
   { name: 'Amazon',        domain: 'amazon.com',        url: 'https://www.amazon.com',        letter: 'A', color: '#ff9900', category: 'Shopping',    description: 'Accessoires voyage' },
-  { name: 'AliExpress',    domain: 'aliexpress.com',    url: 'https://www.aliexpress.com',    letter: 'A', color: '#e62e04', category: 'Shopping',    description: 'Prix bas garantis' },
-  { name: 'GetYourGuide',  domain: 'getyourguide.com',  url: 'https://www.getyourguide.com',  letter: 'G', color: '#ff6600', category: 'Activités',   description: 'Tours & excursions' },
+  { name: 'AliExpress',    domain: 'aliexpress.com',    url: 'https://www.aliexpress.com',    letter: 'A', color: '#e62e04', category: 'Shopping',    description: 'Prix bas garantis', logoScale: 1.24 },
+  { name: 'GetYourGuide',  domain: 'getyourguide.com',  url: 'https://www.getyourguide.com',  letter: 'G', color: '#ff6600', category: 'Activités',   description: 'Tours & excursions', logoScale: 1.22 },
   { name: 'Viator',        domain: 'viator.com',        url: 'https://www.viator.com',        letter: 'V', color: '#d4000e', category: 'Activités',   description: 'Expériences voyage' },
   { name: 'Revolut',       domain: 'revolut.com',       url: 'https://www.revolut.com',       letter: 'R', color: '#0075eb', category: 'Banque',      description: 'Multi-devises' },
   { name: 'N26',           domain: 'n26.com',           url: 'https://www.n26.com',           letter: 'N', color: '#36a18b', category: 'Banque',      description: 'Banque mobile' },
@@ -121,7 +122,8 @@ const PartnerLogo = ({ partner, size = 40 }: { partner: Partner; size?: number }
       <img
         src={logoUrl}
         alt={partner.name}
-        className="w-full h-full object-contain scale-[1.16]"
+        className="w-full h-full object-contain"
+        style={{ transform: `scale(${partner.logoScale ?? 1.16})` }}
         onError={() => setLogoFailed(true)}
         loading="lazy"
         referrerPolicy="no-referrer"
