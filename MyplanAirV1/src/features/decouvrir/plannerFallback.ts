@@ -127,7 +127,7 @@ export const getBudgetFeedback = (budget: number, estimate: number): PlannerBudg
     label: 'Trop juste',
     emoji: '❌',
     color: '#ef4444',
-    message: 'MyTrip te conseille une destination moins coûteuse ou une durée plus courte.',
+    message: 'My Plan’Air te conseille une destination moins coûteuse ou une durée plus courte.',
   };
 };
 
