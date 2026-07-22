@@ -20,6 +20,7 @@ import { useClerk, useUser } from '@clerk/clerk-react';
 import { useTripStore, type AppTheme, type TravelStyle } from '../../store/tripStore';
 import { USER_EMOJIS, nameToHue, nameToInitials } from '../../store/types';
 import { GlassCard } from '../../shared/GlassCard';
+import { ImageCropSheet } from '../../shared/ImageCropSheet';
 import { CURRENCIES } from '../../api/countries';
 import { tripStatus } from '../../utils/dateHelpers';
 import { haversineKm } from '../../utils/geo';
@@ -104,6 +105,7 @@ export const Profil = () => {
   const [deleteConfirm, setDeleteConfirm]       = useState(false);
   const [logoutConfirm, setLogoutConfirm]       = useState(false);
   const [photoSheetOpen, setPhotoSheetOpen]     = useState(false);
+  const [cropSource, setCropSource]             = useState<string | null>(null);
   const [uploading, setUploading]               = useState(false);
   const [editingName, setEditingName]           = useState(false);
   const [nameDraft, setNameDraft]               = useState('');
@@ -194,16 +196,36 @@ export const Profil = () => {
 
   // ── Photo Upload ──
   const handleFileSelect = async (file: File) => {
-    setUploading(true);
+    if (!file.type.startsWith('image/')) return;
     setPhotoSheetOpen(false);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setCropSource(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const dataUrlToFile = async (dataUrl: string, fileName = 'profile-photo.jpg'): Promise<File> => {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return new File([blob], fileName, { type: blob.type || 'image/jpeg', lastModified: Date.now() });
+  };
+
+  const handleCroppedPhoto = async (croppedDataUrl: string) => {
+    setUploading(true);
+    setCropSource(null);
+    setUserPhotoUrl(croppedDataUrl);
     try {
       if (user) {
+        const file = await dataUrlToFile(croppedDataUrl);
         await user.setProfileImage({ file });
-        setUserPhotoUrl(user.imageUrl);
-        toast('Photo mise à jour !', 'success');
       }
+      toast('Photo mise à jour !', 'success');
     } catch {
-      toast('Erreur lors du téléchargement', 'error');
+      toast('Photo ajustée localement. Synchronisation compte indisponible.', 'info');
     } finally {
       setUploading(false);
     }
@@ -1172,6 +1194,14 @@ export const Profil = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ImageCropSheet
+        open={Boolean(cropSource)}
+        imageUrl={cropSource}
+        title="Ajuster ta photo"
+        onClose={() => setCropSource(null)}
+        onConfirm={handleCroppedPhoto}
+      />
     </div>
   );
 };
