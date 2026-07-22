@@ -250,7 +250,7 @@ export const Profil = () => {
   const handleExport = () => {
     const exportPayload = {
       exportedAt: new Date().toISOString(),
-      app: 'MyTrip',
+      app: 'My Plan’Air',
       version: 1,
       profile: {
         userName,
@@ -1036,7 +1036,7 @@ export const Profil = () => {
             8. FOOTER
             ══════════════════════════════════════════════════════════════════════ */}
         <div className="text-center text-[10px] text-white/15 pt-2 pb-4">
-          MyTrip v5.0 · Fait avec ❤️
+          My Plan’Air v5.0 · Fait avec ❤️
         </div>
       </main>
 
