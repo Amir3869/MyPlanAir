@@ -32,6 +32,28 @@ const TYPES: { key: StepType; label: string; emoji: string; color: string }[] = 
   { key: 'other',     label: 'Autre',     emoji: '📌', color: '#94a3b8' },
 ];
 
+type AiSheetMode = 'full' | 'day';
+type AiActivityFamily = 'balanced' | 'culture' | 'food' | 'nature' | 'chill' | 'family' | 'shopping' | 'unusual';
+
+type AiGenerationPreferences = {
+  scope: 'full' | 'day' | 'period';
+  activityFamilies: AiActivityFamily[];
+  avoid?: string;
+  targetPeriods?: StepPeriod[];
+  targetDays?: number[];
+};
+
+const AI_ACTIVITY_FAMILIES: { key: AiActivityFamily; label: string; emoji: string }[] = [
+  { key: 'balanced', label: 'Équilibré', emoji: '✨' },
+  { key: 'culture',  label: 'Culture',   emoji: '🏛️' },
+  { key: 'food',     label: 'Food',      emoji: '🍽️' },
+  { key: 'nature',   label: 'Nature',    emoji: '🌿' },
+  { key: 'chill',    label: 'Chill',     emoji: '🫧' },
+  { key: 'family',   label: 'Famille',   emoji: '👨‍👩‍👧' },
+  { key: 'shopping', label: 'Shopping',  emoji: '🛍️' },
+  { key: 'unusual',  label: 'Insolite',  emoji: '🧭' },
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Palette couleurs par ville (roadtrip)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,6 +134,10 @@ export const Parcours = () => {
   const [infoStep,             setInfoStep]             = useState<Step | null>(null);
   const [generatingItinerary,  setGeneratingItinerary]  = useState(false);
   const [generatingTarget,     setGeneratingTarget]     = useState<string | null>(null);
+  const [aiSheetMode,          setAiSheetMode]          = useState<AiSheetMode | null>(null);
+  const [aiSelectedPeriods,    setAiSelectedPeriods]    = useState<StepPeriod[]>(['morning', 'afternoon', 'night']);
+  const [aiFamilies,           setAiFamilies]           = useState<AiActivityFamily[]>(['balanced']);
+  const [aiAvoid,              setAiAvoid]              = useState('');
   const [regenPeriod,          setRegenPeriod]          = useState<StepPeriod | null>(null);
   const [regenSuggestion,      setRegenSuggestion]      = useState<Step | null>(null);
   const [regenLoading,         setRegenLoading]         = useState(false);
@@ -317,7 +343,10 @@ export const Parcours = () => {
     });
   };
 
-  const buildTargetPayload = (targetDays = 1): ItineraryPayload => {
+  const buildTargetPayload = (
+    targetDays = 1,
+    preferences?: AiGenerationPreferences,
+  ): ItineraryPayload => {
     const activeCity = currentCity?.trim();
     const shouldLockCity = !!trip.isRoadtrip && !!activeCity;
 
@@ -337,6 +366,7 @@ export const Parcours = () => {
           : undefined,
       },
       style: travelStyle,
+      preferences,
     };
   };
 
@@ -345,7 +375,7 @@ export const Parcours = () => {
     updateTrip(trip.id, { steps: [...trip.steps, ...newSteps] });
   };
 
-  const generateDayItinerary = async () => {
+  const generateDayItinerary = async (preferences?: AiGenerationPreferences) => {
     if (generatingTarget || selectedDaySteps.length > 0) return;
 
     haptic([8, 30, 8]);
@@ -353,15 +383,21 @@ export const Parcours = () => {
     info('ARIA prépare cette journée...');
 
     try {
-      const result = await fetchItinerary(buildTargetPayload(1));
+      const result = await fetchItinerary(buildTargetPayload(1, preferences));
       if (!result.ok || result.steps.length === 0) {
         console.warn('[Parcours] Génération journée indisponible:', result);
         error('Impossible de générer cette journée.');
         return;
       }
 
-      const mappedSteps = result.steps
-        .slice(0, 3)
+      const allowedPeriods = preferences?.targetPeriods;
+      const periodFilteredSteps = allowedPeriods?.length
+        ? result.steps.filter((step) => allowedPeriods.includes(step.period))
+        : result.steps;
+      const sourceSteps = periodFilteredSteps.length > 0 ? periodFilteredSteps : result.steps;
+
+      const mappedSteps = sourceSteps
+        .slice(0, allowedPeriods?.length ?? 3)
         .map((step) => ({
           ...step,
           id: crypto.randomUUID(),
@@ -383,9 +419,10 @@ export const Parcours = () => {
   const buildPeriodSuggestion = async (
     period: StepPeriod,
     excludedSteps: Step[] = [],
+    preferences?: AiGenerationPreferences,
   ): Promise<Step | null> => {
     const fetchCandidate = async (): Promise<Step | null> => {
-      const result = await fetchItinerary(buildTargetPayload(1));
+      const result = await fetchItinerary(buildTargetPayload(1, preferences));
       if (!result.ok || result.steps.length === 0) {
         console.warn('[Parcours] Génération moment indisponible:', result);
         return null;
@@ -431,7 +468,7 @@ export const Parcours = () => {
     return fetchCandidate();
   };
 
-  const generatePeriodItinerary = async (period: StepPeriod) => {
+  const generatePeriodItinerary = async (period: StepPeriod, preferences?: AiGenerationPreferences) => {
     const periodItems = stepsByPeriod[period];
     if (generatingTarget || periodItems.length > 0) return;
 
@@ -440,7 +477,7 @@ export const Parcours = () => {
     info('ARIA prépare ce moment...');
 
     try {
-      const mappedStep = await buildPeriodSuggestion(period);
+      const mappedStep = await buildPeriodSuggestion(period, [], preferences);
       if (!mappedStep) {
         error('Impossible de générer ce moment.');
         return;
@@ -505,7 +542,75 @@ export const Parcours = () => {
     setRegenPeriod(null);
   };
 
-  const generateFullItinerary = async () => {
+  const openAiSheet = (mode: AiSheetMode) => {
+    haptic(5);
+    setAiSheetMode(mode);
+    setAiSelectedPeriods(['morning', 'afternoon', 'night']);
+    setAiFamilies(['balanced']);
+    setAiAvoid('');
+  };
+
+  const closeAiSheet = () => {
+    if (generatingItinerary || generatingTarget) return;
+    setAiSheetMode(null);
+  };
+
+  const buildAiPreferences = (): AiGenerationPreferences => {
+    const allPeriodsSelected = aiSelectedPeriods.length === PERIODS.length;
+    const scope = aiSheetMode === 'full'
+      ? 'full'
+      : allPeriodsSelected
+        ? 'day'
+        : 'period';
+
+    return {
+      scope,
+      activityFamilies: aiFamilies,
+      avoid: aiAvoid.trim() || undefined,
+      targetPeriods: aiSheetMode === 'day' ? aiSelectedPeriods : undefined,
+      targetDays: aiSheetMode === 'day' ? [selectedDay] : undefined,
+    };
+  };
+
+  const toggleAiPeriod = (period: StepPeriod) => {
+    setAiSelectedPeriods((current) => {
+      if (current.includes(period)) {
+        return current.length > 1 ? current.filter((item) => item !== period) : current;
+      }
+      return [...current, period];
+    });
+  };
+
+  const toggleAiFamily = (family: AiActivityFamily) => {
+    setAiFamilies((current) => {
+      if (family === 'balanced') return ['balanced'];
+      const withoutBalanced = current.filter((item) => item !== 'balanced');
+      if (withoutBalanced.includes(family)) {
+        const next = withoutBalanced.filter((item) => item !== family);
+        return next.length > 0 ? next : ['balanced'];
+      }
+      return [...withoutBalanced, family];
+    });
+  };
+
+  const runAiSheetGeneration = async () => {
+    if (!aiSheetMode) return;
+    const preferences = buildAiPreferences();
+    setAiSheetMode(null);
+
+    if (aiSheetMode === 'full') {
+      await generateFullItinerary(preferences);
+      return;
+    }
+
+    if (aiSelectedPeriods.length === 1) {
+      await generatePeriodItinerary(aiSelectedPeriods[0], preferences);
+    } else {
+      await generateDayItinerary(preferences);
+    }
+  };
+
+  const generateFullItinerary = async (preferences?: AiGenerationPreferences) => {
     if (generatingItinerary || trip.steps.length > 0) return;
 
     haptic([8, 30, 8]);
@@ -529,6 +634,7 @@ export const Parcours = () => {
           })),
         },
         style: travelStyle,
+        preferences,
       };
 
       const result = await fetchItinerary(payload);
@@ -570,7 +676,7 @@ export const Parcours = () => {
         {trip.steps.length === 0 && (
           <motion.button
             whileTap={{ scale: 0.96 }}
-            onClick={generateFullItinerary}
+            onClick={() => openAiSheet('full')}
             disabled={generatingItinerary}
             className="h-10 px-3.5 rounded-2xl font-semibold text-xs tap disabled:opacity-60 flex items-center gap-2 flex-shrink-0"
             style={{
@@ -729,7 +835,7 @@ export const Parcours = () => {
                 ARIA peut proposer une journée équilibrée pour {currentCity ?? trip.destination} sans toucher aux autres jours.
               </div>
               <button
-                onClick={generateDayItinerary}
+                onClick={() => openAiSheet('day')}
                 disabled={!!generatingTarget || generatingItinerary}
                 className="mt-3 h-10 px-4 rounded-2xl text-xs font-semibold tap disabled:opacity-60 inline-flex items-center gap-2"
                 style={{
@@ -890,63 +996,175 @@ export const Parcours = () => {
                   })}
                 </AnimatePresence>
 
-                {items.length === 0 && (
-                  <motion.div
+                {items.length === 0 ? (
+                  <motion.button
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded-2xl p-3"
+                    onClick={() => openAdder(p.key)}
+                    className="w-full rounded-2xl p-3 flex items-center gap-3 text-left tap transition"
                     style={{
-                      background: `${p.color}10`,
-                      border:     `1px solid ${p.color}22`,
+                      background: `${p.color}12`,
+                      border:     `1px solid ${p.color}30`,
                     }}
                   >
-                    <div className="text-xs text-white/42 mb-2">
-                      Aucun moment prévu {p.label.toLowerCase()}.
-                    </div>
-                    <button
-                      onClick={() => generatePeriodItinerary(p.key)}
-                      disabled={!!generatingTarget || generatingItinerary}
-                      className="w-full h-10 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold tap disabled:opacity-60"
-                      style={{
-                        background: `${p.color}18`,
-                        border:     `1px solid ${p.color}35`,
-                        color:      p.color,
-                      }}
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: `${p.color}18`, color: p.color }}
                     >
-                      {generatingTarget === p.key ? (
-                        <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
-                          className="w-3.5 h-3.5 rounded-full"
-                          style={{
-                            border:       `1px solid ${p.color}40`,
-                            borderTopColor: p.color,
-                          }}
-                        />
-                      ) : (
-                        <Sparkles size={13} />
-                      )}
-                      {generatingTarget === p.key ? 'Génération...' : 'Générer ce moment'}
-                    </button>
-                  </motion.div>
+                      <Plus size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold" style={{ color: p.color }}>
+                        Ajouter une étape
+                      </div>
+                      <div className="text-xs text-white/35 mt-0.5">
+                        {p.label} libre
+                      </div>
+                    </div>
+                  </motion.button>
+                ) : (
+                  <button
+                    onClick={() => openAdder(p.key)}
+                    className="w-full glass rounded-2xl p-3 flex items-center justify-center gap-2 text-white/55 tap hover:text-white transition"
+                    style={{
+                      borderColor: 'rgba(var(--accent-from-rgb), 0.20)',
+                    }}
+                  >
+                    <Plus size={16} />
+                    <span className="text-sm">Ajouter une étape</span>
+                  </button>
                 )}
-
-                {/* ✅ Bouton "Ajouter une étape" — CSS variables thème */}
-                <button
-                  onClick={() => openAdder(p.key)}
-                  className="w-full glass rounded-2xl p-3 flex items-center justify-center gap-2 text-white/55 tap hover:text-white transition"
-                  style={{
-                    borderColor: 'rgba(var(--accent-from-rgb), 0.20)',
-                  }}
-                >
-                  <Plus size={16} />
-                  <span className="text-sm">Ajouter une étape</span>
-                </button>
               </div>
             </div>
           );
         })}
       </div>
+
+      <BottomSheet
+        open={!!aiSheetMode}
+        onClose={closeAiSheet}
+        title={aiSheetMode === 'full' ? 'Générer le parcours' : 'Générer la journée'}
+      >
+        <div className="space-y-5">
+          <div
+            className="rounded-[24px] p-4 relative overflow-hidden"
+            style={{
+              background: 'linear-gradient(135deg, rgba(124,140,255,0.16), rgba(236,72,153,0.08))',
+              border: '1px solid rgba(124,140,255,0.24)',
+            }}
+          >
+            <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full blur-3xl opacity-20" style={{ background: 'var(--accent-to)' }} />
+            <div className="relative flex items-start gap-3">
+              <div
+                className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(var(--accent-from-rgb),0.18)', border: '1px solid rgba(var(--accent-from-rgb),0.28)' }}
+              >
+                <Sparkles size={18} style={{ color: 'var(--accent-label)' }} />
+              </div>
+              <div>
+                <div className="font-bold tracking-tight text-white/92">
+                  {aiSheetMode === 'full' ? 'Préparer tout le voyage' : `Jour ${selectedDay} · ${currentCity ?? trip.destination}`}
+                </div>
+                <div className="text-xs text-white/45 leading-relaxed mt-1">
+                  {aiSheetMode === 'full'
+                    ? 'ARIA génère un parcours complet en gardant ton style de voyage.'
+                    : 'Choisis toute la journée ou un moment précis, puis laisse ARIA proposer.'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {aiSheetMode === 'day' && (
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-2 px-1">
+                <div className="text-xs uppercase tracking-wider text-white/35">Moments à générer</div>
+                <button
+                  type="button"
+                  onClick={() => setAiSelectedPeriods(['morning', 'afternoon', 'night'])}
+                  className="text-[11px] font-semibold text-white/38 tap"
+                >
+                  Tout sélectionner
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {PERIODS.map((period) => {
+                  const active = aiSelectedPeriods.includes(period.key);
+                  const emoji = period.key === 'morning' ? '🌅' : period.key === 'afternoon' ? '☀️' : '🌙';
+                  return (
+                    <button
+                      key={period.key}
+                      onClick={() => toggleAiPeriod(period.key)}
+                      className="rounded-2xl px-3 py-3 text-left tap transition"
+                      style={{
+                        background: active ? `${period.color}20` : 'rgba(255,255,255,0.055)',
+                        border: active ? `1px solid ${period.color}55` : '1px solid rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      <div className="text-lg leading-none mb-1">{emoji}</div>
+                      <div className="text-xs font-semibold" style={{ color: active ? period.color : 'rgba(255,255,255,0.76)' }}>{period.label}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="text-xs uppercase tracking-wider text-white/35 mb-2 px-1">Ambiances</div>
+            <div className="grid grid-cols-2 gap-2">
+              {AI_ACTIVITY_FAMILIES.map((family) => {
+                const active = aiFamilies.includes(family.key);
+                return (
+                  <button
+                    key={family.key}
+                    onClick={() => toggleAiFamily(family.key)}
+                    className="rounded-2xl px-3 py-3 text-left tap transition"
+                    style={{
+                      background: active ? 'rgba(var(--accent-from-rgb),0.16)' : 'rgba(255,255,255,0.05)',
+                      border: active ? '1px solid rgba(var(--accent-from-rgb),0.32)' : '1px solid rgba(255,255,255,0.075)',
+                    }}
+                  >
+                    <div className="text-lg leading-none mb-1">{family.emoji}</div>
+                    <div className="text-xs font-semibold text-white/76">{family.label}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-wider text-white/35 mb-2 px-1">À éviter / consignes</div>
+            <textarea
+              value={aiAvoid}
+              onChange={(event) => setAiAvoid(event.target.value)}
+              placeholder="Ex : pas de musées, pas trop de marche, éviter le sport..."
+              className="w-full min-h-[92px] rounded-2xl px-4 py-3 bg-transparent outline-none text-sm resize-none placeholder-white/25"
+              style={{ background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)' }}
+            />
+            <div className="text-[11px] text-white/28 mt-2 px-1 leading-relaxed">
+              Les préférences sont envoyées avec la demande ARIA. On affinera encore leur impact côté Worker en phase 2.
+            </div>
+          </div>
+
+          <button
+            onClick={runAiSheetGeneration}
+            disabled={generatingItinerary || !!generatingTarget}
+            className="w-full h-12 rounded-2xl font-semibold text-white tap disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{ background: 'linear-gradient(135deg, var(--accent-from), var(--accent-to))', boxShadow: '0 12px 34px rgba(var(--accent-from-rgb),0.28)' }}
+          >
+            {generatingItinerary || generatingTarget ? (
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                className="w-4 h-4 border border-white/25 border-t-white rounded-full"
+              />
+            ) : (
+              <Sparkles size={16} />
+            )}
+            Générer avec ARIA
+          </button>
+        </div>
+      </BottomSheet>
 
       <StepAdder
         open={adderOpen}
@@ -1208,6 +1426,24 @@ export const Parcours = () => {
                 <span className="text-white/35">Aucune note ajoutée pour cette étape.</span>
               )}
             </div>
+
+            <button
+              onClick={() => {
+                const period = infoStep.period;
+                setInfoStep(null);
+                requestPeriodSuggestion(period);
+              }}
+              disabled={regenLoading || !!generatingTarget || generatingItinerary}
+              className="w-full h-12 rounded-2xl font-semibold tap flex items-center justify-center gap-2 disabled:opacity-55"
+              style={{
+                background: 'rgba(var(--accent-from-rgb),0.14)',
+                border: '1px solid rgba(var(--accent-from-rgb),0.28)',
+                color: 'var(--accent-label)',
+              }}
+            >
+              <RefreshCw size={15} />
+              Changer cette suggestion
+            </button>
 
             <button
               onClick={() => openStepInMaps(infoStep)}
