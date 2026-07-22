@@ -154,7 +154,7 @@ export const createPlannerTrip = async (
     checklist,
     documents: [],
     memories: [],
-    notes: `Créé depuis le Planificateur IA MyTrip.\n\n${suggestion.description}`,
+    notes: `Créé depuis le Planificateur IA My Plan’Air.\n\n${suggestion.description}`,
     createdAt: new Date().toISOString(),
     isRoadtrip,
     destinations,
