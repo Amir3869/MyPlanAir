@@ -42,7 +42,7 @@ const getCreationSteps = (withItinerary: boolean): {
   { key: 'photo', title: 'Photo destination', body: 'Image premium via Unsplash' },
   { key: 'checklist', title: 'Checklist IA', body: 'Préparation adaptée au voyage' },
   ...(withItinerary ? [{ key: 'itinerary' as const, title: 'Parcours suggéré', body: 'Idées par jour et moment' }] : []),
-  { key: 'saving', title: 'Sauvegarde', body: 'Création dans MyTrip' },
+  { key: 'saving', title: 'Sauvegarde', body: 'Création dans My Plan’Air' },
 ];
 
 const getStepState = (current: CreationStep, key: CreationStep, withItinerary: boolean): 'done' | 'current' | 'pending' => {
@@ -226,7 +226,7 @@ export const PlannerCreateSheet = ({
             }}
           >
             <Sparkles size={16} />
-            {creating ? 'Création en cours…' : 'Créer dans MyTrip'}
+            {creating ? 'Création en cours…' : 'Créer dans My Plan’Air'}
           </button>
         </div>
       </BottomSheet>
