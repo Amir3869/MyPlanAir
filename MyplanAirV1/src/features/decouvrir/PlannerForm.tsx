@@ -313,7 +313,7 @@ export const PlannerForm = ({
                   <div>
                     <div className="text-sm font-semibold text-[#f0b24a]">Connexion requise</div>
                     <div className="text-xs text-white/45 mt-1 leading-relaxed">
-                      Le planificateur utilise l’IA en ligne. Hors connexion, MyTrip ne génère pas de fausses recommandations.
+                      Le planificateur utilise l’IA en ligne. Hors connexion, My Plan’Air ne génère pas de fausses recommandations.
                     </div>
                   </div>
                 </div>
