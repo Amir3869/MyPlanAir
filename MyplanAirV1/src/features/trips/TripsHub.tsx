@@ -60,11 +60,11 @@ const downloadICS = (trip: Trip) => {
   const title = trip.isRoadtrip ? `${trip.country} · Roadtrip` : trip.destination;
   const uid = `mytrip-${Date.now()}@mytrip.app`;
   const ics = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MyTrip//MyTrip App//FR',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MyPlanAir//My Plan’Air App//FR',
     'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
     `DTSTART;VALUE=DATE:${trip.startDate.replace(/-/g, '')}`,
     `DTEND;VALUE=DATE:${addDaysISO(trip.endDate, 1).replace(/-/g, '')}`,
-    `SUMMARY:${title}`, `DESCRIPTION:Voyage créé avec MyTrip`,
+    `SUMMARY:${title}`, `DESCRIPTION:Voyage créé avec My Plan’Air`,
     `UID:${uid}`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
     'STATUS:CONFIRMED', 'TRANSP:TRANSPARENT', 'END:VEVENT', 'END:VCALENDAR',
   ].join('\r\n');
