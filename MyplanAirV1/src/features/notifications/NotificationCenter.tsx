@@ -40,7 +40,7 @@ const buildGoogleCalendarUrl = (params: {
     action:  'TEMPLATE',
     text:    params.title,
     dates:   `${fmt(params.startDate)}/${fmt(endExclusive)}`,
-    details: params.details ?? 'Voyage créé avec MyTrip ✈️',
+    details: params.details ?? 'Voyage créé avec My Plan’Air ✈️',
     sf:      'true',
     output:  'xml',
   });
@@ -55,12 +55,12 @@ const downloadICS = (params: {
   const endExclusive = addDaysISO(params.endDate, 1);
   const icsContent = [
     'BEGIN:VCALENDAR', 'VERSION:2.0',
-    'PRODID:-//MyTrip//MyTrip App//FR',
+    'PRODID:-//MyPlanAir//My Plan’Air App//FR',
     'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
     `DTSTART;VALUE=DATE:${params.startDate.replace(/-/g, '')}`,
     `DTEND;VALUE=DATE:${endExclusive.replace(/-/g, '')}`,
     `SUMMARY:${escapeIcsText(params.title)}`,
-    `DESCRIPTION:${escapeIcsText(params.details ?? 'Voyage créé avec MyTrip ✈️')}`,
+    `DESCRIPTION:${escapeIcsText(params.details ?? 'Voyage créé avec My Plan’Air ✈️')}`,
     `UID:${uid}`,
     `DTSTAMP:${fmt(new Date().toISOString().slice(0, 10))}`,
     'STATUS:CONFIRMED', 'TRANSP:TRANSPARENT',
@@ -484,7 +484,7 @@ const NotifCard = ({
         title:     `✈️ ${notif.tripName}`,
         startDate: notif.startDate,
         endDate:   notif.endDate,
-        details:   `Voyage planifié avec MyTrip\n${notif.body}`,
+        details:   `Voyage planifié avec My Plan’Air\n${notif.body}`,
       }),
       '_blank',
       'noopener,noreferrer',
@@ -501,7 +501,7 @@ const NotifCard = ({
       title:     `✈️ ${notif.tripName}`,
       startDate: notif.startDate,
       endDate:   notif.endDate,
-      details:   `Voyage planifié avec MyTrip\n${notif.body}`,
+      details:   `Voyage planifié avec My Plan’Air\n${notif.body}`,
     });
     setAgendaOpen(false);
     onRead(notif.id);
