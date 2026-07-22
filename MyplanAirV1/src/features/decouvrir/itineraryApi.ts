@@ -3,7 +3,7 @@
 // API Itinerary — génération de parcours jour par jour via Worker `/itinerary`
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import type { Step, TravelStyle, TripDestination } from '../../store/types';
+import type { Step, StepPeriod, TravelStyle, TripDestination } from '../../store/types';
 import { recordLocalUsage, recordWorkerUsage, type WorkerUsageMeta } from '../../utils/usageTelemetry';
 import type { PlannerSuggestion } from './plannerTypes';
 
@@ -22,6 +22,13 @@ export type ItineraryPayload = {
     destinations?: Pick<TripDestination, 'city' | 'fromDay' | 'toDay'>[];
   };
   style: TravelStyle | null;
+  preferences?: {
+    scope?: 'full' | 'day' | 'period';
+    activityFamilies?: string[];
+    avoid?: string;
+    targetPeriods?: StepPeriod[];
+    targetDays?: number[];
+  };
 };
 
 export type ItineraryDebug = {
