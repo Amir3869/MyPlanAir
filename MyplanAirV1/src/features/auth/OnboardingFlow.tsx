@@ -5,6 +5,7 @@ import { Camera, Check, ChevronRight, Sparkles, ArrowLeft, UserRound, MapPin, Se
 import { useTripStore, type AppTheme } from '../../store/tripStore';
 import { CURRENCIES } from '../../api/countries';
 import { haptic } from '../../utils/haptic';
+import { ImageCropSheet } from '../../shared/ImageCropSheet';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -318,6 +319,7 @@ const Step1NameAvatar = ({
   onNext:        () => void;
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [cropSource, setCropSource] = useState<string | null>(null);
   const canNext      = name.trim().length >= 2;
   const displayName  = name.trim();
   const initials     = initialsFromName(displayName);
@@ -328,7 +330,7 @@ const Step1NameAvatar = ({
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        onPhotoChange(reader.result);
+        setCropSource(reader.result);
       }
     };
     reader.readAsDataURL(file);
@@ -435,6 +437,17 @@ const Step1NameAvatar = ({
           onChange={(event) => {
             handleFile(event.target.files?.[0]);
             event.target.value = '';
+          }}
+        />
+
+        <ImageCropSheet
+          open={Boolean(cropSource)}
+          imageUrl={cropSource}
+          title="Ajuster ta photo"
+          onClose={() => setCropSource(null)}
+          onConfirm={(cropped) => {
+            onPhotoChange(cropped);
+            setCropSource(null);
           }}
         />
       </motion.div>
