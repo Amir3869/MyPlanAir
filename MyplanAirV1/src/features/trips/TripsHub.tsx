@@ -195,10 +195,61 @@ const TripCard = ({
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
+  const restoreSelectionRef = useRef<(() => void) | null>(null);
 
-  const handlePointerDown = () => {
+  const clearNativeSelection = () => {
+    try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+  };
+
+  const lockPageSelection = () => {
+    if (restoreSelectionRef.current) return;
+
+    const body = document.body;
+    const root = document.documentElement;
+    const previous = {
+      bodyUserSelect: body.style.userSelect,
+      rootUserSelect: root.style.userSelect,
+      bodyWebkitUserSelect: (body.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect ?? '',
+      rootWebkitUserSelect: (root.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect ?? '',
+      bodyTouchCallout: (body.style as CSSStyleDeclaration & { webkitTouchCallout?: string }).webkitTouchCallout ?? '',
+      rootTouchCallout: (root.style as CSSStyleDeclaration & { webkitTouchCallout?: string }).webkitTouchCallout ?? '',
+    };
+
+    body.style.userSelect = 'none';
+    root.style.userSelect = 'none';
+    (body.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect = 'none';
+    (root.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect = 'none';
+    (body.style as CSSStyleDeclaration & { webkitTouchCallout?: string }).webkitTouchCallout = 'none';
+    (root.style as CSSStyleDeclaration & { webkitTouchCallout?: string }).webkitTouchCallout = 'none';
+
+    restoreSelectionRef.current = () => {
+      body.style.userSelect = previous.bodyUserSelect;
+      root.style.userSelect = previous.rootUserSelect;
+      (body.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect = previous.bodyWebkitUserSelect;
+      (root.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect = previous.rootWebkitUserSelect;
+      (body.style as CSSStyleDeclaration & { webkitTouchCallout?: string }).webkitTouchCallout = previous.bodyTouchCallout;
+      (root.style as CSSStyleDeclaration & { webkitTouchCallout?: string }).webkitTouchCallout = previous.rootTouchCallout;
+      restoreSelectionRef.current = null;
+    };
+  };
+
+  const unlockPageSelection = () => {
+    clearNativeSelection();
+    restoreSelectionRef.current?.();
+  };
+
+  useEffect(() => () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    unlockPageSelection();
+  }, []);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    lockPageSelection();
+    clearNativeSelection();
     longPressTriggered.current = false;
     longPressTimer.current = setTimeout(() => {
+      clearNativeSelection();
       longPressTriggered.current = true;
       haptic([5, 20, 5]);
       onLongPress(trip);
@@ -206,6 +257,7 @@ const TripCard = ({
   };
   const cancelLongPress = () => {
     if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+    unlockPageSelection();
   };
   const handleClick = () => {
     if (longPressTriggered.current) {
@@ -228,6 +280,8 @@ const TripCard = ({
       }}
       draggable={false}
       onDragStart={(e) => e.preventDefault()}
+      onMouseDown={(e) => { if (e.button === 0) e.preventDefault(); }}
+      onSelect={(e) => e.preventDefault()}
       onPointerDown={handlePointerDown}
       onPointerUp={cancelLongPress}
       onPointerMove={cancelLongPress}
