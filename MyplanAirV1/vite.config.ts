@@ -73,6 +73,17 @@ export default defineConfig({
             },
           },
           {
+            urlPattern: /^https:\/\/img\.logo\.dev\/.*/i,
+            handler:    "CacheFirst",
+            options: {
+              cacheName: "partner-logos",
+              expiration: {
+                maxEntries:    80,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+            },
+          },
+          {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler:    "StaleWhileRevalidate",
             options: {
