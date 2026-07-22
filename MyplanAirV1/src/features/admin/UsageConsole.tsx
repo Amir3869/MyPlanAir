@@ -127,6 +127,29 @@ const formatTime = (iso: string) => {
   }
 };
 
+const formatDateTime = (iso: string) => {
+  try {
+    return new Date(iso).toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
+};
+
+const formatJson = (value: unknown) => {
+  if (value === undefined || value === null) return '—';
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+};
+
 const percent = (used: number, limit?: number) => {
   if (!limit || limit <= 0) return 0;
   return Math.min(100, Math.round((used / limit) * 100));
@@ -705,6 +728,7 @@ export const UsageConsole = () => {
   const [servicesOpen, setServicesOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState(true);
+  const [selectedErrorKey, setSelectedErrorKey] = useState<string | null>(null);
   const [aiSheetOpen, setAiSheetOpen] = useState(false);
   const [storageEstimate, setStorageEstimate] = useState<StorageEstimateState>({ supported: false });
 
@@ -809,18 +833,25 @@ export const UsageConsole = () => {
   }, [events, filter]);
 
   const observedErrors = useMemo(() => {
-    const map = new Map<string, { count: number; last?: UsageEvent }>();
+    const map = new Map<string, { count: number; last?: UsageEvent; events: UsageEvent[] }>();
     for (const event of events) {
       if (event.status !== 'error' && event.status !== 'fallback') continue;
       const key = getErrorKey(event);
       if (!key) continue;
-      const current = map.get(key) ?? { count: 0, last: undefined };
+      const current = map.get(key) ?? { count: 0, last: undefined, events: [] };
       current.count += 1;
       current.last = event;
+      current.events.push(event);
       map.set(key, current);
     }
     return [...map.entries()].sort((a, b) => b[1].count - a[1].count);
   }, [events]);
+
+  const selectedError = useMemo(() => (
+    selectedErrorKey
+      ? observedErrors.find(([key]) => key === selectedErrorKey) ?? null
+      : null
+  ), [observedErrors, selectedErrorKey]);
 
   const reset = () => {
     haptic([8, 30, 8]);
@@ -978,9 +1009,13 @@ export const UsageConsole = () => {
                 const guide = ERROR_GUIDE[key] ?? { title: `Code ${key}`, body: 'Erreur observée pendant les tests.', tone: 'warn' as const };
                 const style = toneStyle(guide.tone);
                 return (
-                  <div
+                  <button
                     key={key}
-                    className="rounded-2xl p-3"
+                    onClick={() => {
+                      haptic(4);
+                      setSelectedErrorKey(key);
+                    }}
+                    className="w-full rounded-2xl p-3 text-left tap"
                     style={{ background: style.bg, border: `1px solid ${style.border}` }}
                   >
                     <div className="flex items-start gap-2">
@@ -998,7 +1033,7 @@ export const UsageConsole = () => {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
               <div className="text-[11px] text-white/28 px-1 pt-1 leading-relaxed">
@@ -1113,6 +1148,96 @@ export const UsageConsole = () => {
           <Server size={12} /> Données de test locales · Worker 2.13-test compatible
         </div>
       </div>
+
+      <BottomSheet
+        open={Boolean(selectedError)}
+        onClose={() => setSelectedErrorKey(null)}
+        title={selectedError ? `Erreur ${selectedError[0]}` : 'Détail erreur'}
+        maxWidth={680}
+      >
+        {selectedError && (() => {
+          const [key, item] = selectedError;
+          const guide = ERROR_GUIDE[key] ?? { title: `Code ${key}`, body: 'Erreur observée pendant les tests.', tone: 'warn' as const };
+          const style = toneStyle(guide.tone);
+          const recentEvents = [...item.events]
+            .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+            .slice(0, 20);
+
+          return (
+            <div className="space-y-4">
+              <div
+                className="rounded-[24px] p-4"
+                style={{ background: style.bg, border: `1px solid ${style.border}` }}
+              >
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={18} style={{ color: style.color, marginTop: 2 }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold" style={{ color: style.color }}>{key} · {guide.title}</div>
+                    <div className="text-xs text-white/48 mt-1 leading-relaxed">{guide.body}</div>
+                    <div className="text-[11px] text-white/32 mt-2">{item.count} événement{item.count > 1 ? 's' : ''} enregistré{item.count > 1 ? 's' : ''} · derniers 20 affichés</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {recentEvents.map((event) => {
+                  const meta = SERVICE_LABELS[event.service];
+                  const status = statusLabel(event);
+                  return (
+                    <div
+                      key={event.id}
+                      className="rounded-[22px] p-4"
+                      style={{ background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.085)' }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-base flex-shrink-0" style={{ background: `${meta.color}22` }}>{meta.emoji}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold truncate">{meta.label}</div>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold flex-shrink-0" style={{ background: status.bg, color: status.color }}>{status.text}</span>
+                          </div>
+                          <div className="text-[11px] text-white/35 mt-1">
+                            {formatDateTime(event.at)} · {event.endpoint} · {formatDuration(event.durationMs)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 mt-3">
+                        {[
+                          { label: 'HTTP', value: event.httpStatus ? String(event.httpStatus) : '—' },
+                          { label: 'Raison', value: event.errorReason ?? '—' },
+                          { label: 'Provider', value: event.provider ?? '—' },
+                          { label: 'Modèle', value: event.model ?? '—' },
+                          { label: 'Worker', value: event.workerVersion ?? 'local' },
+                          { label: 'Request ID', value: event.requestId ?? '—' },
+                        ].map((row) => (
+                          <div key={row.label} className="rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                            <div className="text-[10px] uppercase tracking-wider text-white/28">{row.label}</div>
+                            <div className="text-[11px] font-semibold text-white/68 mt-0.5 truncate">{row.value}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {event.tokens?.totalTokens ? (
+                        <div className="text-[11px] text-white/35 mt-3">
+                          Tokens : {formatNumber(event.tokens.totalTokens)} total · prompt {formatNumber(event.tokens.promptTokens ?? 0)} · réponse {formatNumber(event.tokens.completionTokens ?? 0)}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3">
+                        <div className="text-[10px] uppercase tracking-wider text-white/28 mb-1">Détails enregistrés</div>
+                        <pre className="max-h-52 overflow-auto rounded-2xl p-3 text-[11px] leading-relaxed text-white/55 whitespace-pre-wrap" style={{ background: 'rgba(0,0,0,0.24)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          {formatJson(event.details)}
+                        </pre>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+      </BottomSheet>
 
       <AiTokensSheet
         open={aiSheetOpen}
