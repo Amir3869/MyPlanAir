@@ -643,7 +643,7 @@ const ERROR_GUIDE: Record<string, { title: string; body: string; tone: 'warn' | 
   '503': { title: 'Service indisponible', body: 'Provider temporairement inaccessible ou surchargé.', tone: 'warn' },
   timeout: { title: 'Temps dépassé', body: 'La requête a expiré avant réponse complète.', tone: 'warn' },
   network: { title: 'Réseau indisponible', body: 'Connexion, DNS, offline, CORS ou interruption réseau.', tone: 'info' },
-  fallback: { title: 'Fallback utilisé', body: 'MyTrip a utilisé une réponse locale/cache au lieu du live.', tone: 'info' },
+  fallback: { title: 'Fallback utilisé', body: 'My Plan’Air a utilisé une réponse locale/cache au lieu du live.', tone: 'info' },
 };
 
 const getErrorKey = (event: UsageEvent): string | null => {
