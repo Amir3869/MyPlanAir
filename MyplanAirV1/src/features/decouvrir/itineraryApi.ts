@@ -46,9 +46,53 @@ type ItineraryWorkerResponse = {
   ok?: boolean;
   steps?: unknown;
   error?: unknown;
+  reason?: unknown;
+  message?: unknown;
   details?: unknown;
+  debug?: unknown;
+  source?: unknown;
+  model?: unknown;
+  repaired?: unknown;
   usage?: WorkerUsageMeta;
 };
+
+type ItineraryWorkerObject = Record<string, unknown>;
+
+const getWorkerString = (obj: ItineraryWorkerObject | null, key: string): string | undefined => (
+  typeof obj?.[key] === 'string' ? obj[key] as string : undefined
+);
+
+const buildItineraryUsageDetails = (
+  payload: ItineraryPayload,
+  workerObj?: ItineraryWorkerObject | null,
+  extra?: Record<string, unknown>,
+): Record<string, unknown> => ({
+  action: 'itinerary_generation',
+  context: {
+    destination: payload.trip.destination,
+    country: payload.trip.country,
+    countryCode: payload.trip.countryCode,
+    days: payload.trip.days,
+    budget: payload.trip.budget,
+    currency: payload.trip.currency,
+    isRoadtrip: payload.trip.isRoadtrip,
+    destinations: payload.trip.destinations,
+    preferences: payload.preferences,
+    style: payload.style,
+  },
+  worker: workerObj ? {
+    ok: workerObj.ok,
+    error: workerObj.error,
+    reason: workerObj.reason,
+    message: workerObj.message,
+    details: workerObj.details,
+    debug: workerObj.debug,
+    source: workerObj.source,
+    model: workerObj.model,
+    repaired: workerObj.repaired,
+  } : undefined,
+  ...extra,
+});
 
 const sanitizePeriod = (value: unknown): Step['period'] => {
   if (value === 'morning' || value === 'afternoon' || value === 'night') return value;
@@ -118,6 +162,7 @@ export const fetchItinerary = async (payload: ItineraryPayload): Promise<Itinera
       method: 'POST',
       status: 'error',
       errorReason: 'offline',
+      details: buildItineraryUsageDetails(payload, null, { reason: 'offline' }),
     });
     return { ok: false, reason: 'offline', message: 'Connexion requise pour générer un parcours.', steps: [] };
   }
@@ -141,9 +186,9 @@ export const fetchItinerary = async (payload: ItineraryPayload): Promise<Itinera
       const workerObj = workerBody && typeof workerBody === 'object'
         ? workerBody as Record<string, unknown>
         : null;
-      const workerError = typeof workerObj?.error === 'string'
-        ? workerObj.error
-        : undefined;
+      const workerError = getWorkerString(workerObj, 'error');
+      const workerReason = getWorkerString(workerObj, 'reason');
+      const workerMessage = getWorkerString(workerObj, 'message');
       const workerDetails = typeof workerObj?.details === 'string'
         ? workerObj.details
         : undefined;
@@ -153,7 +198,14 @@ export const fetchItinerary = async (payload: ItineraryPayload): Promise<Itinera
         endpoint: '/itinerary',
         method: 'POST',
         status: 'error',
-        errorReason: workerError ?? `http_${res.status}`,
+        errorReason: workerReason ?? workerError ?? `http_${res.status}`,
+        details: buildItineraryUsageDetails(payload, workerObj, {
+          httpStatus: res.status,
+          workerError,
+          workerReason,
+          workerMessage,
+          workerDetails,
+        }),
       });
 
       console.warn('[fetchItinerary] Worker error', {
@@ -166,12 +218,12 @@ export const fetchItinerary = async (payload: ItineraryPayload): Promise<Itinera
 
       return {
         ok: false,
-        reason: workerError ?? (res.status === 404 ? 'itinerary_unavailable' : 'http_error'),
+        reason: workerReason ?? workerError ?? (res.status === 404 ? 'itinerary_unavailable' : 'http_error'),
         message: res.status === 404
           ? 'Le générateur de parcours n’est pas encore disponible.'
-          : workerError
-          ? `Erreur parcours IA : ${workerError}`
-          : `Erreur génération parcours (${res.status}).`,
+          : workerMessage ?? workerReason ?? workerError
+          ? `Erreur parcours IA : ${workerMessage ?? workerReason ?? workerError}`
+          : `Erreur génération parcours (${res.status}).`, 
         steps: [],
         debug: {
           status: res.status,
@@ -183,20 +235,29 @@ export const fetchItinerary = async (payload: ItineraryPayload): Promise<Itinera
     }
 
     const data = await res.json() as ItineraryWorkerResponse;
+    const dataObj = data as ItineraryWorkerObject;
     recordWorkerUsage(data.usage, {
       service: 'itinerary',
       endpoint: '/itinerary',
       method: 'POST',
       status: data.ok === true ? 'success' : 'error',
-      errorReason: data.ok === true ? undefined : typeof data.error === 'string' ? data.error : 'invalid_response',
+      errorReason: data.ok === true
+        ? undefined
+        : getWorkerString(dataObj, 'reason') ?? getWorkerString(dataObj, 'error') ?? 'invalid_response',
+      details: data.ok === true
+        ? buildItineraryUsageDetails(payload, dataObj, { stepsCount: Array.isArray(data.steps) ? data.steps.length : undefined })
+        : buildItineraryUsageDetails(payload, dataObj),
     });
 
     if (data.ok !== true) {
       const workerError = typeof data.error === 'string' ? data.error : 'invalid_response';
+      const workerReason = typeof data.reason === 'string' ? data.reason : undefined;
+      const workerMessage = typeof data.message === 'string' ? data.message : undefined;
       const workerDetails = typeof data.details === 'string' ? data.details : undefined;
 
       console.warn('[fetchItinerary] Invalid success payload', {
         workerError,
+        workerReason,
         workerDetails,
         data,
         payload,
@@ -204,8 +265,8 @@ export const fetchItinerary = async (payload: ItineraryPayload): Promise<Itinera
 
       return {
         ok: false,
-        reason: workerError,
-        message: `Réponse parcours invalide : ${workerError}`,
+        reason: workerReason ?? workerError,
+        message: `Réponse parcours invalide : ${workerMessage ?? workerReason ?? workerError}`, 
         steps: [],
         debug: {
           workerError,
@@ -226,6 +287,10 @@ export const fetchItinerary = async (payload: ItineraryPayload): Promise<Itinera
       method: 'POST',
       status: 'error',
       errorReason: error.name === 'TimeoutError' ? 'timeout' : 'network_error',
+      details: buildItineraryUsageDetails(payload, null, {
+        reason: error.name === 'TimeoutError' ? 'timeout' : 'network_error',
+        message: error.message,
+      }),
     });
     return {
       ok: false,
