@@ -150,6 +150,34 @@ const formatJson = (value: unknown) => {
   }
 };
 
+const asRecord = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+);
+
+const humanReason = (reason?: string) => {
+  if (!reason) return 'Raison non précisée.';
+  const map: Record<string, string> = {
+    no_valid_steps_for_target_periods: 'L’IA a répondu, mais aucune étape ne correspondait aux moments demandés.',
+    invalid_ai_response: 'Le Worker n’a pas réussi à transformer la réponse IA en parcours valide.',
+    all_ai_providers_failed: 'Tous les providers IA disponibles ont échoué ou n’ont pas répondu correctement.',
+    timeout: 'La requête a pris trop de temps.',
+    network_error: 'La requête n’a pas pu joindre le service.',
+    offline: 'L’appareil était hors connexion.',
+    invalid_rate: 'Le provider a répondu sans taux exploitable.',
+    provider_http_error: 'Le provider externe a renvoyé une erreur HTTP.',
+  };
+  return map[reason] ?? reason;
+};
+
+const formatListValue = (value: unknown) => {
+  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '—';
+  if (value === undefined || value === null || value === '') return '—';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
 const percent = (used: number, limit?: number) => {
   if (!limit || limit <= 0) return 0;
   return Math.min(100, Math.round((used / limit) * 100));
@@ -729,6 +757,8 @@ export const UsageConsole = () => {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState(true);
   const [selectedErrorKey, setSelectedErrorKey] = useState<string | null>(null);
+  const [expandedErrorEventId, setExpandedErrorEventId] = useState<string | null>(null);
+  const [expandedTechnicalEventId, setExpandedTechnicalEventId] = useState<string | null>(null);
   const [aiSheetOpen, setAiSheetOpen] = useState(false);
   const [storageEstimate, setStorageEstimate] = useState<StorageEstimateState>({ supported: false });
 
@@ -1183,6 +1213,12 @@ export const UsageConsole = () => {
                 {recentEvents.map((event) => {
                   const meta = SERVICE_LABELS[event.service];
                   const status = statusLabel(event);
+                  const details = asRecord(event.details);
+                  const context = asRecord(details.context);
+                  const worker = asRecord(details.worker);
+                  const reason = String(worker.reason ?? details.workerReason ?? details.reason ?? event.errorReason ?? '');
+                  const expanded = expandedErrorEventId === event.id;
+                  const techExpanded = expandedTechnicalEventId === event.id;
                   return (
                     <div
                       key={event.id}
@@ -1224,12 +1260,82 @@ export const UsageConsole = () => {
                         </div>
                       ) : null}
 
-                      <div className="mt-3">
-                        <div className="text-[10px] uppercase tracking-wider text-white/28 mb-1">Détails enregistrés</div>
-                        <pre className="max-h-52 overflow-auto rounded-2xl p-3 text-[11px] leading-relaxed text-white/55 whitespace-pre-wrap" style={{ background: 'rgba(0,0,0,0.24)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                          {formatJson(event.details)}
-                        </pre>
+                      <div className="grid grid-cols-2 gap-2 mt-3">
+                        <button
+                          onClick={() => setExpandedErrorEventId(expanded ? null : event.id)}
+                          className="h-10 rounded-2xl text-xs font-semibold tap"
+                          style={{ background: 'rgba(var(--accent-from-rgb),0.12)', border: '1px solid rgba(var(--accent-from-rgb),0.22)', color: 'var(--accent-label)' }}
+                        >
+                          {expanded ? 'Masquer raison' : 'Voir raison'}
+                        </button>
+                        <button
+                          onClick={() => setExpandedTechnicalEventId(techExpanded ? null : event.id)}
+                          className="h-10 rounded-2xl text-xs font-semibold tap"
+                          style={{ background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.62)' }}
+                        >
+                          {techExpanded ? 'Masquer JSON' : 'JSON technique'}
+                        </button>
                       </div>
+
+                      {expanded && (
+                        <div className="mt-3 space-y-2">
+                          <div className="rounded-2xl p-3" style={{ background: 'rgba(0,0,0,0.20)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                            <div className="text-[10px] uppercase tracking-wider text-white/28 mb-1">Pourquoi</div>
+                            <div className="text-xs text-white/65 leading-relaxed">{humanReason(reason)}</div>
+                          </div>
+
+                          <div className="rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                            <div className="text-[10px] uppercase tracking-wider text-white/28 mb-2">Contexte</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                { label: 'Destination', value: context.destination },
+                                { label: 'Pays', value: context.country },
+                                { label: 'Jours', value: context.days },
+                                { label: 'Roadtrip', value: context.isRoadtrip === true ? 'Oui' : context.isRoadtrip === false ? 'Non' : undefined },
+                                { label: 'Moments', value: asRecord(context.preferences).targetPeriods },
+                                { label: 'Ambiances', value: asRecord(context.preferences).activityFamilies },
+                              ].map((row) => (
+                                <div key={row.label}>
+                                  <div className="text-[10px] text-white/28 uppercase tracking-wider">{row.label}</div>
+                                  <div className="text-[11px] text-white/62 font-semibold mt-0.5 truncate">{formatListValue(row.value)}</div>
+                                </div>
+                              ))}
+                            </div>
+                            {asRecord(context.preferences).avoid ? (
+                              <div className="mt-2">
+                                <div className="text-[10px] text-white/28 uppercase tracking-wider">À éviter</div>
+                                <div className="text-[11px] text-white/58 mt-0.5 leading-relaxed">{String(asRecord(context.preferences).avoid)}</div>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                            <div className="text-[10px] uppercase tracking-wider text-white/28 mb-2">Retour Worker</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                { label: 'Erreur', value: worker.error ?? details.workerError },
+                                { label: 'Raison', value: worker.reason ?? details.workerReason },
+                                { label: 'Message', value: worker.message ?? details.workerMessage },
+                                { label: 'Réparé', value: worker.repaired === true ? 'Oui' : worker.repaired === false ? 'Non' : undefined },
+                              ].map((row) => (
+                                <div key={row.label}>
+                                  <div className="text-[10px] text-white/28 uppercase tracking-wider">{row.label}</div>
+                                  <div className="text-[11px] text-white/62 font-semibold mt-0.5 truncate">{formatListValue(row.value)}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {techExpanded && (
+                        <div className="mt-3">
+                          <div className="text-[10px] uppercase tracking-wider text-white/28 mb-1">Détails techniques enregistrés</div>
+                          <pre className="max-h-52 overflow-auto rounded-2xl p-3 text-[11px] leading-relaxed text-white/55 whitespace-pre-wrap" style={{ background: 'rgba(0,0,0,0.24)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                            {formatJson(event.details)}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
