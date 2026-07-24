@@ -121,7 +121,7 @@ const GeocodingFailToast = ({
       transition={{ type: 'spring', damping: 26, stiffness: 300 }}
       className="fixed left-4 right-4 z-[210] rounded-2xl overflow-hidden"
       style={{
-        bottom: 'calc(env(safe-area-inset-bottom, 12px) + 132px)',
+        bottom: 'calc(env(safe-area-inset-bottom, 12px) + 108px)',
         background:     'rgba(20,20,32,0.97)',
         border:         '1px solid rgba(255,255,255,0.12)',
         backdropFilter: 'blur(32px)',
@@ -255,7 +255,7 @@ const PlaceMapModal = ({
       style={{
         background: 'rgba(0,0,0,0.7)',
         backdropFilter: 'blur(12px)',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 12px) + 84px)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 12px) + 58px)',
       }}
       onClick={onClose}
     >
