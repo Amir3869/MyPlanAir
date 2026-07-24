@@ -95,6 +95,13 @@ export const fetchChat = async (
       method: 'POST',
       status: res.ok && data?.ok !== false ? 'success' : 'error',
       errorReason: res.ok ? undefined : `http_${res.status}`,
+      details: {
+        destination: payload.destination,
+        country: payload.country,
+        isRoadtrip: payload.isRoadtrip,
+        locationContext: payload.locationContext,
+        questionFamily: payload.locationContext?.family,
+      },
     });
 
     if (!res.ok) {
