@@ -14,6 +14,7 @@ import { useToast } from '../../shared/Toast';
 import { daysBetween, getTimeOfDay, addDaysISO, fmtDate } from '../../utils/dateHelpers';
 import { haptic } from '../../utils/haptic';
 import { geocodePlace } from '../../utils/geo';
+import { isIOS } from '../../utils/platform';
 import { MemoryStorage } from '../../utils/memoryStorage';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -246,7 +247,10 @@ export const Parcours = () => {
 
   const openStepInMaps = (step: Step) => {
     const query = buildStepSearchQuery(step);
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    const encoded = encodeURIComponent(query);
+    const url = isIOS()
+      ? `https://maps.apple.com/?q=${encoded}`
+      : `https://www.google.com/maps/search/?api=1&query=${encoded}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
