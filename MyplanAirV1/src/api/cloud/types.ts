@@ -68,6 +68,14 @@ export type ChatPayload = {
   currency:     string;
   isRoadtrip:   boolean;
   destinations: Array<{ city: string; countryCode: string }>;
+  locationContext?: {
+    mode: 'gps' | 'city';
+    label?: string;
+    lat?: number;
+    lon?: number;
+    radiusKm?: number;
+    family?: string;
+  };
   history:      Array<{ role: 'user' | 'assistant'; content: string }>;
 };
 
