@@ -119,8 +119,9 @@ const GeocodingFailToast = ({
       animate={{ opacity: 1, y: 0,  scale: 1    }}
       exit={{ opacity: 0,  y: 20, scale: 0.95   }}
       transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-      className="fixed bottom-24 left-4 right-4 z-[210] rounded-2xl overflow-hidden"
+      className="fixed left-4 right-4 z-[210] rounded-2xl overflow-hidden"
       style={{
+        bottom: 'calc(env(safe-area-inset-bottom, 12px) + 132px)',
         background:     'rgba(20,20,32,0.97)',
         border:         '1px solid rgba(255,255,255,0.12)',
         backdropFilter: 'blur(32px)',
@@ -239,14 +240,23 @@ const PlaceMapModal = ({
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${place.query}`;
   const appleMapsUrl  = `https://maps.apple.com/?q=${place.query}&ll=${place.lat},${place.lon}`;
   const onDevice      = isIOS();
+  const distanceWarning = distance !== null && distance > 50
+    ? 'Ce lieu semble très éloigné. ARIA a peut-être proposé une adresse hors zone : vérifie avant d’y aller.'
+    : distance !== null && distance > 15
+    ? 'Ce lieu semble assez éloigné de toi. Vérifie le trajet avant d’y aller.'
+    : null;
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] flex items-end justify-center"
-      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)' }}
+      className="fixed inset-0 z-[200] flex items-end justify-center px-3"
+      style={{
+        background: 'rgba(0,0,0,0.7)',
+        backdropFilter: 'blur(12px)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 12px) + 84px)',
+      }}
       onClick={onClose}
     >
       <motion.div
@@ -256,7 +266,7 @@ const PlaceMapModal = ({
         transition={{ type: 'spring', damping: 30, stiffness: 320 }}
         className="w-full max-w-lg overflow-hidden"
         style={{
-          borderRadius:   '28px 28px 0 0',
+          borderRadius:   '28px',
           background:     'rgba(12,12,20,0.97)',
           border:         '1px solid rgba(255,255,255,0.1)',
           backdropFilter: 'blur(40px)',
@@ -334,6 +344,21 @@ const PlaceMapModal = ({
               <X size={16} className="text-white/70" />
             </button>
           </div>
+
+          {distanceWarning && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-3 rounded-2xl px-3 py-2 text-xs leading-relaxed"
+              style={{
+                background: 'rgba(240,178,74,0.12)',
+                border: '1px solid rgba(240,178,74,0.26)',
+                color: '#f0b24a',
+              }}
+            >
+              ⚠️ {distanceWarning}
+            </motion.div>
+          )}
 
           {distance !== null && (
             <motion.div
