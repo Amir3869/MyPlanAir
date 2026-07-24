@@ -22,6 +22,13 @@ export type ItineraryPayload = {
     destinations?: Pick<TripDestination, 'city' | 'fromDay' | 'toDay'>[];
   };
   style: TravelStyle | null;
+  proximity?: {
+    mode: 'city' | 'gps' | 'custom';
+    label?: string;
+    lat?: number;
+    lon?: number;
+    radiusKm?: number;
+  };
   preferences?: {
     scope?: 'full' | 'day' | 'period';
     activityFamilies?: string[];
@@ -78,6 +85,7 @@ const buildItineraryUsageDetails = (
     isRoadtrip: payload.trip.isRoadtrip,
     destinations: payload.trip.destinations,
     preferences: payload.preferences,
+    proximity: payload.proximity,
     style: payload.style,
   },
   worker: workerObj ? {
