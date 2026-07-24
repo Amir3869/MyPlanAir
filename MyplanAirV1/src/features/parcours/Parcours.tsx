@@ -1,5 +1,5 @@
 // src/features/parcours/Parcours.tsx
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sun, SunDim, Moon, Plus, Check, Trash2,
@@ -13,6 +13,7 @@ import { BottomSheet } from '../../shared/BottomSheet';
 import { useToast } from '../../shared/Toast';
 import { daysBetween, getTimeOfDay, addDaysISO, fmtDate } from '../../utils/dateHelpers';
 import { haptic } from '../../utils/haptic';
+import { geocodePlace } from '../../utils/geo';
 import { MemoryStorage } from '../../utils/memoryStorage';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ const TYPES: { key: StepType; label: string; emoji: string; color: string }[] = 
 ];
 
 type AiSheetMode = 'full' | 'day';
+type AiProximityMode = 'city' | 'gps' | 'custom';
 type AiActivityFamily = 'balanced' | 'culture' | 'food' | 'nature' | 'chill' | 'family' | 'shopping' | 'unusual';
 
 type AiGenerationPreferences = {
@@ -41,6 +43,14 @@ type AiGenerationPreferences = {
   avoid?: string;
   targetPeriods?: StepPeriod[];
   targetDays?: number[];
+};
+
+type LocalBaseResult = {
+  label: string;
+  subtitle: string;
+  countryCode: string;
+  lat: number;
+  lon: number;
 };
 
 const AI_ACTIVITY_FAMILIES: { key: AiActivityFamily; label: string; emoji: string }[] = [
@@ -53,6 +63,17 @@ const AI_ACTIVITY_FAMILIES: { key: AiActivityFamily; label: string; emoji: strin
   { key: 'shopping', label: 'Shopping',  emoji: '🛍️' },
   { key: 'unusual',  label: 'Insolite',  emoji: '🧭' },
 ];
+
+const PROXIMITY_PLACEHOLDER_EXAMPLES: Record<string, string> = {
+  FR: 'Ex : Bron, Montmartre, Hôtel de Ville...',
+  MA: 'Ex : Guéliz, Médina, Riad Yasmine...',
+  MY: 'Ex : Kuala Lumpur, George Town, Langkawi...',
+  GB: 'Ex : Soho, Shoreditch, Westminster...',
+  US: 'Ex : Manhattan, Brooklyn, Downtown...',
+  ES: 'Ex : Eixample, Gràcia, Centro...',
+  IT: 'Ex : Trastevere, Centro Storico, Navigli...',
+  JP: 'Ex : Shinjuku, Shibuya, Gion...',
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Palette couleurs par ville (roadtrip)
@@ -138,6 +159,14 @@ export const Parcours = () => {
   const [aiSelectedPeriods,    setAiSelectedPeriods]    = useState<StepPeriod[]>(['morning', 'afternoon', 'night']);
   const [aiFamilies,           setAiFamilies]           = useState<AiActivityFamily[]>(['balanced']);
   const [aiAvoid,              setAiAvoid]              = useState('');
+  const [aiProximityMode,      setAiProximityMode]      = useState<AiProximityMode>('city');
+  const [aiProximityLabel,     setAiProximityLabel]     = useState('');
+  const [aiProximityCoords,    setAiProximityCoords]    = useState<{ lat: number; lon: number } | null>(null);
+  const [aiProximityResults,   setAiProximityResults]   = useState<LocalBaseResult[]>([]);
+  const [aiProximitySearching, setAiProximitySearching] = useState(false);
+  const [aiProximityLoading,   setAiProximityLoading]   = useState(false);
+  const aiProximityDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiProximityAbortRef    = useRef<AbortController | null>(null);
   const [regenPeriod,          setRegenPeriod]          = useState<StepPeriod | null>(null);
   const [regenSuggestion,      setRegenSuggestion]      = useState<Step | null>(null);
   const [regenLoading,         setRegenLoading]         = useState(false);
@@ -346,6 +375,7 @@ export const Parcours = () => {
   const buildTargetPayload = (
     targetDays = 1,
     preferences?: AiGenerationPreferences,
+    proximity?: ItineraryPayload['proximity'],
   ): ItineraryPayload => {
     const activeCity = currentCity?.trim();
     const shouldLockCity = !!trip.isRoadtrip && !!activeCity;
@@ -366,6 +396,7 @@ export const Parcours = () => {
           : undefined,
       },
       style: travelStyle,
+      proximity,
       preferences,
     };
   };
@@ -375,7 +406,10 @@ export const Parcours = () => {
     updateTrip(trip.id, { steps: [...trip.steps, ...newSteps] });
   };
 
-  const generateDayItinerary = async (preferences?: AiGenerationPreferences) => {
+  const generateDayItinerary = async (
+    preferences?: AiGenerationPreferences,
+    proximity?: ItineraryPayload['proximity'],
+  ) => {
     if (generatingTarget || selectedDaySteps.length > 0) return;
 
     haptic([8, 30, 8]);
@@ -383,7 +417,7 @@ export const Parcours = () => {
     info('ARIA prépare cette journée...');
 
     try {
-      const result = await fetchItinerary(buildTargetPayload(1, preferences));
+      const result = await fetchItinerary(buildTargetPayload(1, preferences, proximity));
       if (!result.ok || result.steps.length === 0) {
         console.warn('[Parcours] Génération journée indisponible:', result);
         error('Impossible de générer cette journée.');
@@ -420,9 +454,10 @@ export const Parcours = () => {
     period: StepPeriod,
     excludedSteps: Step[] = [],
     preferences?: AiGenerationPreferences,
+    proximity?: ItineraryPayload['proximity'],
   ): Promise<Step | null> => {
     const fetchCandidate = async (): Promise<Step | null> => {
-      const result = await fetchItinerary(buildTargetPayload(1, preferences));
+      const result = await fetchItinerary(buildTargetPayload(1, preferences, proximity));
       if (!result.ok || result.steps.length === 0) {
         console.warn('[Parcours] Génération moment indisponible:', result);
         return null;
@@ -468,7 +503,11 @@ export const Parcours = () => {
     return fetchCandidate();
   };
 
-  const generatePeriodItinerary = async (period: StepPeriod, preferences?: AiGenerationPreferences) => {
+  const generatePeriodItinerary = async (
+    period: StepPeriod,
+    preferences?: AiGenerationPreferences,
+    proximity?: ItineraryPayload['proximity'],
+  ) => {
     const periodItems = stepsByPeriod[period];
     if (generatingTarget || periodItems.length > 0) return;
 
@@ -477,7 +516,7 @@ export const Parcours = () => {
     info('ARIA prépare ce moment...');
 
     try {
-      const mappedStep = await buildPeriodSuggestion(period, [], preferences);
+      const mappedStep = await buildPeriodSuggestion(period, [], preferences, proximity);
       if (!mappedStep) {
         error('Impossible de générer ce moment.');
         return;
@@ -548,11 +587,204 @@ export const Parcours = () => {
     setAiSelectedPeriods(['morning', 'afternoon', 'night']);
     setAiFamilies(['balanced']);
     setAiAvoid('');
+    setAiProximityMode('city');
+    setAiProximityLabel('');
+    setAiProximityCoords(null);
+    setAiProximityResults([]);
+    setAiProximitySearching(false);
+    setAiProximityLoading(false);
   };
 
   const closeAiSheet = () => {
     if (generatingItinerary || generatingTarget) return;
     setAiSheetMode(null);
+  };
+
+  const isCountryOnlyTrip = !trip.isRoadtrip && trip.destination.trim().toLowerCase() === trip.country.trim().toLowerCase();
+
+  const defaultBaseLabel = trip.isRoadtrip
+    ? `Ville du jour · ${currentCity ?? trip.country}`
+    : isCountryOnlyTrip
+      ? `Pays entier · ${trip.country}`
+      : `Ville du voyage · ${trip.destination}`;
+
+  const defaultBaseHelp = trip.isRoadtrip
+    ? 'Pour un roadtrip, ARIA utilise la ville du jour sélectionné.'
+    : isCountryOnlyTrip
+      ? 'Pour un pays entier, indique idéalement une ville, un quartier ou un hôtel pour plus de précision.'
+      : 'ARIA part de la ville du voyage. Tu peux préciser une ville proche, un quartier ou un hôtel.';
+
+  const proximityPlaceholder = trip.isRoadtrip && currentCity
+    ? `Ex : centre de ${currentCity}, hôtel, quartier...`
+    : PROXIMITY_PLACEHOLDER_EXAMPLES[trip.countryCode.toUpperCase()]
+      ?? (isCountryOnlyTrip
+        ? `Ex : capitale, grande ville ou quartier en ${trip.country}...`
+        : `Ex : centre de ${trip.destination}, hôtel, quartier...`);
+
+  const getAiRadiusKm = () => {
+    if (aiSheetMode === 'full') return 15;
+    if (aiFamilies.some((family) => family === 'food' || family === 'shopping')) return 5;
+    if (aiSelectedPeriods.length === 1) return 8;
+    return 10;
+  };
+
+  useEffect(() => () => {
+    if (aiProximityDebounceRef.current) clearTimeout(aiProximityDebounceRef.current);
+    aiProximityAbortRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    if (aiProximityMode !== 'custom') {
+      setAiProximityResults([]);
+      setAiProximitySearching(false);
+      return;
+    }
+
+    const query = aiProximityLabel.trim();
+    if (query.length < 2) {
+      setAiProximityResults([]);
+      setAiProximitySearching(false);
+      return;
+    }
+
+    if (aiProximityDebounceRef.current) clearTimeout(aiProximityDebounceRef.current);
+    aiProximityDebounceRef.current = setTimeout(async () => {
+      aiProximityAbortRef.current?.abort();
+      const controller = new AbortController();
+      aiProximityAbortRef.current = controller;
+      setAiProximitySearching(true);
+
+      try {
+        const url = new URL('https://photon.komoot.io/api/');
+        const context = [currentCity ?? (!isCountryOnlyTrip ? trip.destination : ''), trip.country]
+          .filter(Boolean)
+          .join(' ');
+        url.searchParams.set('q', `${query} ${context}`.trim());
+        url.searchParams.set('limit', '6');
+        url.searchParams.set('lang', 'fr');
+
+        const biasLat = currentDestination?.lat ?? trip.lat;
+        const biasLon = currentDestination?.lon ?? trip.lon;
+        if (Number.isFinite(biasLat) && Number.isFinite(biasLon)) {
+          url.searchParams.set('lat', String(biasLat));
+          url.searchParams.set('lon', String(biasLon));
+        }
+
+        const res = await fetch(url.toString(), { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const features = Array.isArray(data?.features) ? data.features : [];
+        const mapped: LocalBaseResult[] = features
+          .map((feature: any): LocalBaseResult | null => {
+            const props = feature?.properties ?? {};
+            const code = String(props.countrycode ?? '').toUpperCase();
+            const coords = feature?.geometry?.coordinates;
+            const lon = Array.isArray(coords) ? Number(coords[0]) : NaN;
+            const lat = Array.isArray(coords) ? Number(coords[1]) : NaN;
+            if (code !== trip.countryCode.toUpperCase()) return null;
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+            const label = String(props.name ?? '').trim();
+            if (!label) return null;
+            const area = [props.city, props.county, props.state]
+              .filter(Boolean)
+              .map(String)
+              .filter((item, index, arr) => arr.indexOf(item) === index)
+              .join(' · ');
+            return {
+              label,
+              subtitle: [area, props.country].filter(Boolean).join(' · ') || trip.country,
+              countryCode: code,
+              lat,
+              lon,
+            };
+          })
+          .filter((item: LocalBaseResult | null): item is LocalBaseResult => item !== null)
+          .filter((item: LocalBaseResult, index: number, arr: LocalBaseResult[]) => (
+            arr.findIndex((other: LocalBaseResult) => other.label === item.label && other.countryCode === item.countryCode) === index
+          ))
+          .slice(0, 4);
+
+        setAiProximityResults(mapped);
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') setAiProximityResults([]);
+      } finally {
+        setAiProximitySearching(false);
+      }
+    }, 280);
+
+    return () => {
+      if (aiProximityDebounceRef.current) clearTimeout(aiProximityDebounceRef.current);
+    };
+  }, [aiProximityLabel, aiProximityMode, currentCity, currentDestination?.lat, currentDestination?.lon, isCountryOnlyTrip, trip.country, trip.countryCode, trip.destination, trip.lat, trip.lon]);
+
+  const requestAiGps = () => {
+    if (!navigator.geolocation || aiProximityLoading) {
+      error('Localisation indisponible sur cet appareil.');
+      return;
+    }
+
+    haptic(5);
+    setAiProximityMode('gps');
+    setAiProximityLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setAiProximityCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        setAiProximityLabel('Ma position actuelle');
+        setAiProximityLoading(false);
+        success('Position ajoutée au contexte ARIA');
+      },
+      () => {
+        setAiProximityLoading(false);
+        setAiProximityMode('custom');
+        setAiProximityResults([]);
+        setAiProximityCoords(null);
+        info('Position non disponible. Indique plutôt ton quartier, hôtel ou ville proche.');
+      },
+      { timeout: 9000, maximumAge: 60000 },
+    );
+  };
+
+  const buildAiProximity = async (): Promise<ItineraryPayload['proximity']> => {
+    const radiusKm = getAiRadiusKm();
+
+    if (aiProximityMode === 'gps' && aiProximityCoords) {
+      return {
+        mode: 'gps',
+        label: aiProximityLabel || 'Ma position actuelle',
+        lat: aiProximityCoords.lat,
+        lon: aiProximityCoords.lon,
+        radiusKm,
+      };
+    }
+
+    if (aiProximityMode === 'custom' && aiProximityLabel.trim()) {
+      const label = aiProximityLabel.trim();
+      if (aiProximityCoords) {
+        return {
+          mode: 'custom',
+          label,
+          lat: aiProximityCoords.lat,
+          lon: aiProximityCoords.lon,
+          radiusKm,
+        };
+      }
+
+      const query = [label, currentCity ?? (!isCountryOnlyTrip ? trip.destination : ''), trip.country].filter(Boolean).join(', ');
+      const coords = await geocodePlace(query);
+      return {
+        mode: 'custom',
+        label,
+        lat: coords?.lat,
+        lon: coords?.lon,
+        radiusKm,
+      };
+    }
+
+    return {
+      mode: 'city',
+      label: currentCity ?? (isCountryOnlyTrip ? trip.country : trip.destination),
+      radiusKm,
+    };
   };
 
   const buildAiPreferences = (): AiGenerationPreferences => {
@@ -596,21 +828,27 @@ export const Parcours = () => {
   const runAiSheetGeneration = async () => {
     if (!aiSheetMode) return;
     const preferences = buildAiPreferences();
+    setAiProximityLoading(true);
+    const proximity = await buildAiProximity();
+    setAiProximityLoading(false);
     setAiSheetMode(null);
 
     if (aiSheetMode === 'full') {
-      await generateFullItinerary(preferences);
+      await generateFullItinerary(preferences, proximity);
       return;
     }
 
     if (aiSelectedPeriods.length === 1) {
-      await generatePeriodItinerary(aiSelectedPeriods[0], preferences);
+      await generatePeriodItinerary(aiSelectedPeriods[0], preferences, proximity);
     } else {
-      await generateDayItinerary(preferences);
+      await generateDayItinerary(preferences, proximity);
     }
   };
 
-  const generateFullItinerary = async (preferences?: AiGenerationPreferences) => {
+  const generateFullItinerary = async (
+    preferences?: AiGenerationPreferences,
+    proximity?: ItineraryPayload['proximity'],
+  ) => {
     if (generatingItinerary || trip.steps.length > 0) return;
 
     haptic([8, 30, 8]);
@@ -634,6 +872,7 @@ export const Parcours = () => {
           })),
         },
         style: travelStyle,
+        proximity,
         preferences,
       };
 
@@ -1074,6 +1313,112 @@ export const Parcours = () => {
             </div>
           </div>
 
+          <div>
+            <div className="text-xs uppercase tracking-wider text-white/35 mb-2 px-1">Point de départ</div>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: 'city' as AiProximityMode, label: isCountryOnlyTrip ? 'Choisir ville' : trip.isRoadtrip ? 'Ville du jour' : 'Ville', emoji: '🏙️' },
+                { key: 'gps' as AiProximityMode, label: 'Ma position', emoji: '📍' },
+                { key: 'custom' as AiProximityMode, label: 'Lieu précis', emoji: '🏨' },
+              ].map((item) => {
+                const active = aiProximityMode === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => {
+                      if (item.key === 'gps') requestAiGps();
+                      else {
+                        const nextMode = item.key === 'city' && isCountryOnlyTrip ? 'custom' : item.key;
+                        setAiProximityMode(nextMode);
+                        setAiProximityResults([]);
+                        setAiProximityCoords(null);
+                        if (nextMode === 'city') {
+                          setAiProximityLabel('');
+                        }
+                      }
+                    }}
+                    className="rounded-2xl px-2.5 py-3 text-left tap transition disabled:opacity-60"
+                    disabled={aiProximityLoading && item.key === 'gps'}
+                    style={{
+                      background: active ? 'rgba(var(--accent-from-rgb),0.16)' : 'rgba(255,255,255,0.05)',
+                      border: active ? '1px solid rgba(var(--accent-from-rgb),0.32)' : '1px solid rgba(255,255,255,0.075)',
+                    }}
+                  >
+                    <div className="text-lg leading-none mb-1">{item.emoji}</div>
+                    <div className="text-[11px] font-semibold text-white/76">{item.label}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {aiProximityMode === 'city' && (
+              <div className="mt-3 rounded-2xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div className="text-xs font-semibold text-white/70">{defaultBaseLabel}</div>
+                <div className="text-[11px] text-white/34 mt-1 leading-relaxed">{defaultBaseHelp}</div>
+              </div>
+            )}
+
+            {aiProximityMode === 'custom' && (
+              <div className="mt-3 space-y-2">
+                <input
+                  value={aiProximityLabel}
+                  onChange={(event) => {
+                    setAiProximityLabel(event.target.value);
+                    setAiProximityCoords(null);
+                  }}
+                  placeholder={proximityPlaceholder}
+                  className="w-full h-11 rounded-2xl px-4 bg-transparent outline-none text-sm placeholder-white/25"
+                  style={{ background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.09)' }}
+                />
+
+                {aiProximitySearching && (
+                  <div className="text-[11px] text-white/32 px-1">Recherche du lieu…</div>
+                )}
+
+                {aiProximityResults.length > 0 && (
+                  <div className="space-y-1.5">
+                    {aiProximityResults.map((result) => (
+                      <button
+                        key={`${result.label}-${result.lat}-${result.lon}`}
+                        type="button"
+                        onClick={() => {
+                          haptic(4);
+                          setAiProximityLabel(result.label);
+                          setAiProximityCoords({ lat: result.lat, lon: result.lon });
+                          setAiProximityResults([]);
+                        }}
+                        className="w-full rounded-2xl px-3 py-2.5 text-left tap flex items-center gap-2"
+                        style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.075)' }}
+                      >
+                        <MapPin size={13} className="text-white/35 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-semibold text-white/74 truncate">{result.label}</div>
+                          <div className="text-[11px] text-white/32 truncate">{result.subtitle}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {aiProximityLabel.trim().length >= 2 && !aiProximitySearching && aiProximityResults.length === 0 && !aiProximityCoords && (
+                  <div className="text-[11px] text-white/30 px-1 leading-relaxed">
+                    Aucun lieu confirmé pour l’instant. Tu peux quand même générer, ARIA utilisera ce texte comme repère approximatif.
+                  </div>
+                )}
+
+                {aiProximityCoords && (
+                  <div className="text-[11px] text-white/35 px-1">
+                    ✓ Lieu confirmé avec coordonnées
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="text-[11px] text-white/28 mt-2 px-1 leading-relaxed">
+              ARIA privilégie les lieux proches : 2–5 km pour food/pratique, 5–10 km pour visites, jusqu’à 15 km pour une journée complète.
+            </div>
+          </div>
+
           {aiSheetMode === 'day' && (
             <div>
               <div className="flex items-center justify-between gap-3 mb-2 px-1">
@@ -1148,7 +1493,7 @@ export const Parcours = () => {
 
           <button
             onClick={runAiSheetGeneration}
-            disabled={generatingItinerary || !!generatingTarget}
+            disabled={generatingItinerary || !!generatingTarget || aiProximityLoading}
             className="w-full h-12 rounded-2xl font-semibold text-white tap disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ background: 'linear-gradient(135deg, var(--accent-from), var(--accent-to))', boxShadow: '0 12px 34px rgba(var(--accent-from-rgb),0.28)' }}
           >
