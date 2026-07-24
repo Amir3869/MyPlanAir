@@ -887,8 +887,9 @@ export const TripsHub = () => {
     });
   }, [searchFiltered, pinnedSet]);
 
-  // ── Stack mode : 3+ voyages, filtre "all", pas de recherche ──
-  const useStackMode = sorted.length >= 3 && filter === 'all' && !searchQuery.trim();
+  // ── Stack mode désactivé : on garde l’ordre intelligent, mais les cartes
+  // restent en liste normale pour conserver un vrai aperçu visuel de chaque voyage.
+  const useStackMode = false;
 
   // ── Pulse dot sur filtre "En cours" ──
   const hasOngoing = trips.some((t) => tripStatus(t.startDate, t.endDate) === 'ongoing');
