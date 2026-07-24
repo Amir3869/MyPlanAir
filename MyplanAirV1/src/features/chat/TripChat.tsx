@@ -603,6 +603,51 @@ const buildChips = (
 // ─────────────────────────────────────────────────────────────────────────────
 // FALLBACK OFFLINE
 // ─────────────────────────────────────────────────────────────────────────────
+const getLocalQuestionContext = (question: string): { radiusKm: number; family: string } | null => {
+  const q = question.toLowerCase();
+
+  if (/(resto|restaurant|manger|déjeuner|dejeuner|dîner|diner|café|cafe|brunch|bar)/i.test(q)) {
+    return { radiusKm: 5, family: 'food/pratique' };
+  }
+
+  if (/(pharmacie|médecin|medecin|hôpital|hopital|urgence|atm|distributeur|retirer|argent|change)/i.test(q)) {
+    return { radiusKm: 5, family: 'pratique/urgence' };
+  }
+
+  if (/(visite|activité|activite|musée|musee|monument|marché|marche|site|voir|faire aujourd|que faire|ce soir)/i.test(q)) {
+    return { radiusKm: q.includes('ce soir') || q.includes('aujourd') ? 15 : 10, family: 'activité/visite' };
+  }
+
+  return null;
+};
+
+const buildChatLocationContext = (
+  question: string,
+  destination: string,
+  userPos: { lat: number; lon: number } | null,
+): ChatPayload['locationContext'] | undefined => {
+  const context = getLocalQuestionContext(question);
+  if (!context) return undefined;
+
+  if (userPos) {
+    return {
+      mode: 'gps',
+      label: 'Ma position actuelle',
+      lat: userPos.lat,
+      lon: userPos.lon,
+      radiusKm: context.radiusKm,
+      family: context.family,
+    };
+  }
+
+  return {
+    mode: 'city',
+    label: destination,
+    radiusKm: context.radiusKm,
+    family: context.family,
+  };
+};
+
 const buildOfflineFallback = (question: string, destination: string): string => {
   const q = question.toLowerCase();
   if (q.includes('resto') || q.includes('manger') || q.includes('restaurant')) {
@@ -895,6 +940,23 @@ export const TripChat = () => {
     );
   }, [userPos]);
 
+  const requestUserPositionOnce = useCallback((): Promise<{ lat: number; lon: number } | null> => {
+    if (userPos) return Promise.resolve(userPos);
+    if (!navigator.geolocation) return Promise.resolve(null);
+
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          setUserPos(coords);
+          resolve(coords);
+        },
+        () => resolve(null),
+        { timeout: 5000, maximumAge: 60000 },
+      );
+    });
+  }, [userPos]);
+
   const handlePlaceClick = useCallback(
     async (name: string, address: string) => {
       setFailToast(null);
@@ -978,6 +1040,10 @@ export const TripChat = () => {
 
       try {
         const days = daysBetween(trip.startDate, trip.endDate);
+        const localContext = getLocalQuestionContext(userText);
+        const preciseUserPos = localContext ? await requestUserPositionOnce() : userPos;
+        const destinationLabel = trip.isRoadtrip ? trip.country : trip.destination;
+        const locationContext = buildChatLocationContext(userText, destinationLabel, preciseUserPos);
 
         const historyForApi = chatHistory.slice(-8).map((m) => ({
           role:    m.role,
@@ -996,6 +1062,7 @@ export const TripChat = () => {
             city:        d.city,
             countryCode: d.countryCode,
           })) ?? [],
+          locationContext,
           history: historyForApi,
         };
 
@@ -1022,7 +1089,7 @@ export const TripChat = () => {
         inputRef.current?.focus();
       }
     },
-    [trip, loading, chatHistory, addChatMessage],
+    [trip, loading, chatHistory, addChatMessage, requestUserPositionOnce, userPos],
   );
 
   const retryLastMessage = useCallback(() => {
@@ -1254,13 +1321,29 @@ export const TripChat = () => {
             }}
           >
             <div className="px-4 py-3">
-              <div className="text-[11px] text-white/35 mb-2 uppercase tracking-wider">
-                {status === 'ongoing'
-                  ? '📍 En voyage — questions du moment'
-                  : status === 'upcoming' && daysUntil <= 3
-                    ? '⚡ Dernière minute'
-                    : 'Questions suggérées'}
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="text-[11px] text-white/35 uppercase tracking-wider">
+                  {status === 'ongoing'
+                    ? '📍 En voyage — questions du moment'
+                    : status === 'upcoming' && daysUntil <= 3
+                      ? '⚡ Dernière minute'
+                      : 'Questions suggérées'}
+                </div>
+                {!userPos && status === 'ongoing' && (
+                  <button
+                    onClick={requestUserPosition}
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-full tap"
+                    style={{ background: 'rgba(86,197,164,0.12)', border: '1px solid rgba(86,197,164,0.24)', color: '#56c5a4' }}
+                  >
+                    Activer position
+                  </button>
+                )}
               </div>
+              {!userPos && status === 'ongoing' && (
+                <div className="text-[11px] text-white/30 leading-relaxed mb-2">
+                  Pour des restos et activités plus proches, active ta position. Sinon ARIA reste sur la ville du voyage.
+                </div>
+              )}
               <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
                 {chips.map((chip) => (
                   <button
